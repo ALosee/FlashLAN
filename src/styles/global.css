@@ -58,3 +58,14 @@ svg {
   border-style: solid;
   border-color: hsl(var(--border));
 }
+
+/* Mobile safe area */
+body {
+  padding-bottom: env(safe-area-inset-bottom);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+button,
+a {
+  touch-action: manipulation;
+}

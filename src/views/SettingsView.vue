@@ -22,7 +22,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="p-6 max-w-3xl mx-auto w-full space-y-6">
+  <div class="p-4 md:p-6 max-w-3xl mx-auto w-full space-y-4 md:space-y-6">
     <div>
       <h1 class="text-xl font-bold tracking-tight">设置</h1>
       <p class="text-sm text-muted-foreground mt-1">管理设备与传输偏好</p>
@@ -30,7 +30,9 @@ onMounted(async () => {
 
     <SCard>
       <div class="divide-y">
-        <div class="py-4 flex items-center justify-between gap-4 first:pt-0 last:pb-0">
+        <div
+          class="py-3 md:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 first:pt-0 last:pb-0"
+        >
           <div class="flex items-center gap-3">
             <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
               <SIcon icon="lucide:monitor" />
@@ -43,7 +45,7 @@ onMounted(async () => {
           <SInput v-model="deviceName" class="w-56" placeholder="输入设备名称" />
         </div>
 
-        <div class="py-4 flex items-center justify-between gap-4">
+        <div class="py-3 md:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div class="flex items-center gap-3">
             <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
               <SIcon icon="lucide:folder" />
@@ -61,7 +63,7 @@ onMounted(async () => {
           </SButton>
         </div>
 
-        <div class="py-4 flex items-center justify-between gap-4">
+        <div class="py-3 md:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div class="flex items-center gap-3">
             <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
               <SIcon icon="lucide:shield-check" />
@@ -74,7 +76,7 @@ onMounted(async () => {
           <SSwitch v-model="autoReceive" />
         </div>
 
-        <div class="py-4 flex items-center justify-between gap-4">
+        <div class="py-3 md:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div class="flex items-center gap-3">
             <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
               <SIcon icon="lucide:plug" />
@@ -87,7 +89,7 @@ onMounted(async () => {
           <span class="text-xs font-mono bg-muted px-2.5 py-1 rounded-md">17321</span>
         </div>
 
-        <div class="py-4 flex items-center justify-between gap-4">
+        <div class="py-3 md:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div class="flex items-center gap-3">
             <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
               <SIcon icon="lucide:info" />

@@ -14,8 +14,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="p-6 max-w-5xl mx-auto w-full space-y-4">
-    <div class="flex items-center justify-between">
+  <div class="p-4 md:p-6 max-w-5xl mx-auto w-full space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div>
         <h1 class="text-xl font-bold tracking-tight">附近设备</h1>
         <p class="text-sm text-muted-foreground mt-1">基于 mDNS 自动发现，需在同一局域网</p>
@@ -46,7 +46,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-else class="grid grid-cols-2 gap-3">
+    <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <SCard v-for="d in deviceStore.devices" :key="d.id" class="p-4!">
         <div class="flex items-center gap-3">
           <div class="size-10 rounded-xl bg-muted flex items-center justify-center shrink-0">

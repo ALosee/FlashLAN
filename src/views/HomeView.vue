@@ -119,7 +119,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="p-6 space-y-6 max-w-5xl mx-auto w-full">
+  <div class="p-4 md:p-6 space-y-4 md:space-y-6 max-w-5xl mx-auto w-full">
     <!-- Header -->
     <div class="flex items-center justify-between gap-4">
       <div>
@@ -162,7 +162,7 @@ onMounted(async () => {
     <!-- Drop zone -->
     <SCard class="border-dashed! border-2!">
       <div
-        class="p-10 text-center transition-colors cursor-pointer rounded-xl"
+        class="p-6 md:p-10 text-center transition-colors cursor-pointer rounded-xl"
         :class="isDragging ? 'bg-primary/5 border-primary' : 'bg-card hover:bg-muted/30'"
         @dragover="onDragOver"
         @dragleave="onDragLeave"
@@ -225,7 +225,7 @@ onMounted(async () => {
         未发现设备，请确保两台设备在同一局域网且已启动 FlashLAN
       </div>
 
-      <div class="grid grid-cols-3 gap-3 mt-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
         <SCard
           v-for="device in deviceStore.devices"
           :key="device.id"

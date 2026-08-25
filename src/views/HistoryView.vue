@@ -32,7 +32,7 @@ const records = [
 </script>
 
 <template>
-  <div class="p-6 max-w-5xl mx-auto w-full space-y-4">
+  <div class="p-4 md:p-6 max-w-5xl mx-auto w-full space-y-4">
     <div>
       <h1 class="text-xl font-bold tracking-tight">传输记录</h1>
       <p class="text-sm text-muted-foreground mt-1">查看历史收发文件</p>
