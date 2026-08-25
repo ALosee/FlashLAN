@@ -123,8 +123,8 @@ export const useTransferStore = defineStore('transfer', () => {
     try {
       const taskId = await invoke<string>('send_file', {
         path: filePath,
-        targetIp,
-        targetPort,
+        target_ip: targetIp,
+        target_port: targetPort,
       })
       task.id = taskId
       task.status = 'transferring'
