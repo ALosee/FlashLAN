@@ -1,0 +1,14 @@
+{
+  "iconLibrary": "lucide",
+  "uno": {
+    "base": "zinc",
+    "primary": "indigo",
+    "size": "md",
+    "radius": "md"
+  },
+  "font": {},
+  "aliases": {
+    "ui": "#ui"
+  },
+  "registries": {}
+}
