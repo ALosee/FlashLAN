@@ -16,6 +16,7 @@ export interface TransferTask {
   status: 'pending' | 'transferring' | 'completed' | 'failed'
   targetDevice: string
   targetIp: string
+  error?: string
 }
 
 interface ProgressPayload {
@@ -131,7 +132,10 @@ export const useTransferStore = defineStore('transfer', () => {
       tasks.value.unshift(task)
       return taskId
     } catch (e) {
+      const msg = String(e)
+      console.error('[FlashLAN] send_file failed', { filePath, targetIp, error: msg })
       task.status = 'failed'
+      task.error = msg
       tasks.value.unshift(task)
       throw e
     }

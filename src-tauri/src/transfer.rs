@@ -118,8 +118,13 @@ async fn handle_incoming(mut socket: TcpStream, save_dir: PathBuf, app: Arc<AppH
 
 pub async fn send_file(path: String, target_ip: String, target_port: u16, app: AppHandle) -> Result<String, String> {
     use std::path::Path;
+    println!("send_file request: path={} target={}:{}", path, target_ip, target_port);
     let p = Path::new(&path);
-    if !p.exists() { return Err(format!("file not found: {path}")); }
+    if !p.exists() { 
+        let msg = format!("file not found: {path}");
+        eprintln!("{}", msg);
+        return Err(msg); 
+    }
     let metadata = tokio::fs::metadata(p).await.map_err(|e| e.to_string())?;
     if !metadata.is_file() { return Err("only files supported in MVP, folders TODO".into()); }
     let file_name = p.file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
@@ -128,7 +133,12 @@ pub async fn send_file(path: String, target_ip: String, target_port: u16, app: A
     let header = FileHeader { file_name: file_name.clone(), file_size, task_id: task_id.clone() };
     let header_json = serde_json::to_string(&header).map_err(|e| e.to_string())? + "\n";
     let addr = format!("{}:{}", target_ip, target_port);
-    let mut socket = TcpStream::connect(&addr).await.map_err(|e| format!("connect {addr}: {e}"))?;
+    println!("Connecting to {}", addr);
+    let mut socket = TcpStream::connect(&addr).await.map_err(|e| {
+        let msg = format!("connect {addr}: {e}");
+        eprintln!("{}", msg);
+        msg
+    })?;
     socket.write_all(header_json.as_bytes()).await.map_err(|e| e.to_string())?;
     let mut file = tokio::fs::File::open(p).await.map_err(|e| e.to_string())?;
     let mut buf = vec![0u8; CHUNK_SIZE];

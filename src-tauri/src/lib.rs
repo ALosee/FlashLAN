@@ -2,7 +2,7 @@ mod discovery;
 mod transfer;
 
 use discovery::DeviceInfo;
-
+use tauri::Manager;
 use std::{path::PathBuf, sync::OnceLock};
 
 static MDNS_DAEMON: OnceLock<mdns_sd::ServiceDaemon> = OnceLock::new();
@@ -44,8 +44,22 @@ pub fn run() {
             }
             // Start file server
             let handle = app.handle().clone();
-            let save_dir = dirs::download_dir().unwrap_or_else(|| PathBuf::from("/tmp")).join("FlashLAN");
-            let _ = std::fs::create_dir_all(&save_dir);
+            let mut save_dir = dirs::download_dir()
+                .or_else(|| app.path().download_dir().ok())
+                .or_else(|| app.path().app_data_dir().ok())
+                .unwrap_or_else(|| PathBuf::from("/tmp"))
+                .join("FlashLAN");
+            if let Err(e) = std::fs::create_dir_all(&save_dir) {
+                eprintln!("Failed to create save_dir {:?}: {}", save_dir, e);
+                if let Ok(fallback) = app.path().app_data_dir() {
+                    let fb = fallback.join("FlashLAN");
+                    let _ = std::fs::create_dir_all(&fb);
+                    println!("Fallback save_dir: {:?}", fb);
+                    save_dir = fb;
+                }
+            } else {
+                println!("FlashLAN save_dir: {:?}", save_dir);
+            }
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = transfer::start_file_server(handle, save_dir).await {
                     eprintln!("file server failed: {e}");

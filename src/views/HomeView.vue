@@ -338,6 +338,9 @@ onMounted(async () => {
               <span>{{ task.targetIp }}</span>
               <span v-if="task.speed">· {{ formatSpeed(task.speed) }}</span>
             </div>
+            <div v-if="task.error" class="text-xs text-destructive mt-1 truncate">
+              {{ task.error }}
+            </div>
             <div class="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
               <div
                 class="h-full bg-primary rounded-full transition-all"
