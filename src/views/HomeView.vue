@@ -6,6 +6,7 @@ import { SCard } from '@/ui/components/card'
 import { SIcon } from '@/ui/components/icon'
 import { SBadge } from '@/ui/components/badge'
 import { SSeparator } from '@/ui/components/separator'
+import { isTauri } from '@/utils/tauri'
 import { useDeviceStore } from '@/stores/device'
 import { useTransferStore } from '@/stores/transfer'
 
@@ -30,26 +31,70 @@ function onDrop(e: DragEvent) {
 }
 
 async function pickFiles() {
-  const files = await open({ multiple: true, directory: false })
-  if (files) {
-    const list = Array.isArray(files) ? files : [files]
-    selectedFiles.value = list
+  if (!isTauri()) {
+    // Browser fallback: use hidden input
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.multiple = true
+    input.addEventListener('change', () => {
+      const files = input.files
+      if (files) {
+        selectedFiles.value = Array.from(files).map(f => f.name)
+      }
+    })
+    input.click()
+    return
+  }
+  try {
+    const files = await open({ multiple: true, directory: false })
+    if (files) {
+      const list = Array.isArray(files) ? files : [files]
+      selectedFiles.value = list
+    }
+  } catch (e) {
+    console.warn('open dialog failed', e)
   }
 }
 
 async function pickFolder() {
-  const folder = await open({ directory: true, multiple: false })
-  if (folder && typeof folder === 'string') {
-    selectedFiles.value = [folder]
+  if (!isTauri()) {
+    const input = document.createElement('input')
+    input.type = 'file'
+    ;(input as HTMLInputElement & { webkitdirectory: boolean }).webkitdirectory = true
+    input.addEventListener('change', () => {
+      const files = input.files
+      if (files && files.length > 0) {
+        const first = files[0] as File & { webkitRelativePath?: string }
+        selectedFiles.value = [first.webkitRelativePath?.split('/')[0] || first.name]
+      }
+    })
+    input.click()
+    return
+  }
+  try {
+    const folder = await open({ directory: true, multiple: false })
+    if (folder && typeof folder === 'string') {
+      selectedFiles.value = [folder]
+    }
+  } catch (e) {
+    console.warn('open folder failed', e)
   }
 }
 
 async function handleSend(deviceIp: string, devicePort?: number) {
   if (selectedFiles.value.length === 0) {
-    const files = await open({ multiple: true, directory: false })
-    if (!files) return
-    const list = Array.isArray(files) ? files : [files]
-    selectedFiles.value = list
+    if (!isTauri()) {
+      selectedFiles.value = ['browser-file-mock.txt']
+    } else {
+      try {
+        const files = await open({ multiple: true, directory: false })
+        if (!files) return
+        const list = Array.isArray(files) ? files : [files]
+        selectedFiles.value = list
+      } catch {
+        return
+      }
+    }
   }
   for (const file of selectedFiles.value) {
     try {

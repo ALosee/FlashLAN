@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { isTauri } from '@/utils/tauri'
 
 export interface TransferTask {
   id: string
@@ -69,6 +70,37 @@ export const useTransferStore = defineStore('transfer', () => {
   }
 
   async function sendFile(filePath: string, targetIp: string, targetPort?: number) {
+    if (!isTauri()) {
+      // Browser mock: simulate progress
+      const mockId = Math.random().toString(36).slice(2)
+      const fileName = filePath.split('/').pop() || 'file'
+      const task: TransferTask = {
+        id: mockId,
+        fileName,
+        filePath,
+        progress: 0,
+        speed: 0,
+        transferred: 0,
+        total: 100,
+        status: 'transferring',
+        targetDevice: targetIp,
+        targetIp,
+      }
+      tasks.value.unshift(task)
+      let p = 0
+      const timer = setInterval(() => {
+        p += 20
+        task.progress = Math.min(p, 100)
+        task.transferred = task.progress
+        task.total = 100
+        task.speed = 1024 * 1024 * 2
+        if (p >= 100) {
+          task.status = 'completed'
+          clearInterval(timer)
+        }
+      }, 300)
+      return mockId
+    }
     await ensureListener()
     const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'file'
     const task: TransferTask = {

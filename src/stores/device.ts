@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { isTauri } from '@/utils/tauri'
 
 export interface Device {
   id: string
@@ -18,6 +19,17 @@ export const useDeviceStore = defineStore('device', () => {
   const error = ref<string | null>(null)
 
   async function fetchLocal() {
+    if (!isTauri()) {
+      localDevice.value = {
+        id: 'browser-mock',
+        name: 'Browser Preview',
+        ip: '127.0.0.1',
+        platform: 'browser',
+        port: 17321,
+        online: true,
+      }
+      return
+    }
     try {
       const info = await invoke<Device>('get_device_info')
       localDevice.value = { ...info, online: true }
