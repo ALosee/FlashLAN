@@ -23,9 +23,15 @@ async fn discover_devices() -> Vec<DeviceInfo> {
 }
 
 #[tauri::command]
-async fn send_file(app: tauri::AppHandle, path: String, target_ip: String, target_port: Option<u16>) -> Result<String, String> {
+async fn send_file(
+    app: tauri::AppHandle,
+    path: String,
+    target_ip: String,
+    target_port: Option<u16>,
+    task_id: Option<String>,
+) -> Result<String, String> {
     let port = target_port.unwrap_or(discovery::SERVICE_PORT);
-    transfer::send_file(path, target_ip, port, app).await
+    transfer::send_file(path, target_ip, port, task_id, app).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

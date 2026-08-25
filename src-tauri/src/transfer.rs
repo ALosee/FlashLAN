@@ -130,7 +130,13 @@ async fn handle_incoming(mut socket: TcpStream, save_dir: PathBuf, app: Arc<AppH
     Ok(())
 }
 
-pub async fn send_file(path: String, target_ip: String, target_port: u16, app: AppHandle) -> Result<String, String> {
+pub async fn send_file(
+    path: String,
+    target_ip: String,
+    target_port: u16,
+    task_id_opt: Option<String>,
+    app: AppHandle,
+) -> Result<String, String> {
     use std::path::Path;
     println!("send_file request: path={} target={}:{}", path, target_ip, target_port);
     let p = Path::new(&path);
@@ -143,7 +149,7 @@ pub async fn send_file(path: String, target_ip: String, target_port: u16, app: A
     if !metadata.is_file() { return Err("only files supported in MVP, folders TODO".into()); }
     let file_name = p.file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
     let file_size = metadata.len();
-    let task_id = uuid::Uuid::new_v4().to_string();
+    let task_id = task_id_opt.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let header = FileHeader { file_name: file_name.clone(), file_size, task_id: task_id.clone() };
     let header_json = serde_json::to_string(&header).map_err(|e| e.to_string())? + "\n";
     let addr = format!("{}:{}", target_ip, target_port);

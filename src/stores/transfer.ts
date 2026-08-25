@@ -77,7 +77,6 @@ export const useTransferStore = defineStore('transfer', () => {
 
   async function sendFile(filePath: string, targetIp: string, targetPort?: number) {
     if (!isTauri()) {
-      // Browser mock: simulate progress
       const mockId = Math.random().toString(36).slice(2)
       const fileName = filePath.split('/').pop() || 'file'
       const task: TransferTask = {
@@ -109,34 +108,35 @@ export const useTransferStore = defineStore('transfer', () => {
     }
     await ensureListener()
     const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'file'
+    const taskId = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)
     const task: TransferTask = {
-      id: '',
+      id: taskId,
       fileName,
       filePath,
       progress: 0,
       speed: 0,
       transferred: 0,
       total: 0,
-      status: 'pending',
+      status: 'transferring',
       targetDevice: targetIp,
       targetIp,
     }
+    tasks.value.unshift(task)
     try {
-      const taskId = await invoke<string>('send_file', {
+      const returnedId = await invoke<string>('send_file', {
         path: filePath,
         targetIp,
         targetPort,
+        taskId,
       })
-      task.id = taskId
-      task.status = 'transferring'
-      tasks.value.unshift(task)
-      return taskId
+      // Use returned or keep generated
+      task.id = returnedId || taskId
+      return task.id
     } catch (e) {
       const msg = String(e)
       console.error('[FlashLAN] send_file failed', { filePath, targetIp, error: msg })
       task.status = 'failed'
       task.error = msg
-      tasks.value.unshift(task)
       throw e
     }
   }
