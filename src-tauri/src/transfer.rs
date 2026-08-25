@@ -133,14 +133,28 @@ pub async fn send_file(path: String, target_ip: String, target_port: u16, app: A
     let header = FileHeader { file_name: file_name.clone(), file_size, task_id: task_id.clone() };
     let header_json = serde_json::to_string(&header).map_err(|e| e.to_string())? + "\n";
     let addr = format!("{}:{}", target_ip, target_port);
-    println!("Connecting to {}", addr);
-    let mut socket = TcpStream::connect(&addr).await.map_err(|e| {
-        let msg = format!("connect {addr}: {e}");
+    println!("Connecting to {} with 5s timeout", addr);
+    let mut socket = tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(&addr))
+        .await
+        .map_err(|_| format!("connect {addr}: timeout after 5s"))?
+        .map_err(|e| {
+            let msg = format!("connect {addr}: {e}");
+            eprintln!("{}", msg);
+            msg
+        })?;
+    println!("Connected to {}, sending header {}", addr, header_json.trim());
+    socket.write_all(header_json.as_bytes()).await.map_err(|e| {
+        let msg = format!("write header: {e}");
         eprintln!("{}", msg);
         msg
     })?;
-    socket.write_all(header_json.as_bytes()).await.map_err(|e| e.to_string())?;
-    let mut file = tokio::fs::File::open(p).await.map_err(|e| e.to_string())?;
+    println!("Header sent, opening file {:?}", p);
+    let mut file = tokio::fs::File::open(p).await.map_err(|e| {
+        let msg = format!("open file {:?}: {e}", p);
+        eprintln!("{}", msg);
+        msg
+    })?;
+    println!("File opened, size {}", file_size);
     let mut buf = vec![0u8; CHUNK_SIZE];
     let mut sent: u64 = 0;
     let start = std::time::Instant::now();
