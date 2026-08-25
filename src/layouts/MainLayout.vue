@@ -32,7 +32,9 @@ onMounted(() => {
 <template>
   <div class="flex h-[100dvh] w-screen overflow-hidden bg-background flex-col md:flex-row">
     <!-- Mobile header -->
-    <header class="flex md:hidden h-14 shrink-0 items-center justify-between px-4 border-b bg-card">
+    <header
+      class="flex md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between px-4 border-b bg-card pt-[env(safe-area-inset-top)]"
+    >
       <div class="flex items-center gap-2">
         <div
           class="size-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground"

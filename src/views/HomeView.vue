@@ -121,16 +121,21 @@ onMounted(async () => {
 <template>
   <div class="p-4 md:p-6 space-y-4 md:space-y-6 max-w-5xl mx-auto w-full">
     <!-- Header -->
-    <div class="flex items-center justify-between gap-4">
-      <div>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div class="flex-1 min-w-0">
         <h1 class="text-xl font-bold tracking-tight">快速传文件</h1>
         <p class="text-sm text-muted-foreground mt-1">拖拽文件到此处，或选择设备直接发送</p>
       </div>
-      <div class="flex items-center gap-3 shrink-0">
+      <div
+        class="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end bg-muted/50 sm:bg-transparent px-3 py-2 sm:p-0 rounded-lg"
+      >
         <span class="text-xs text-muted-foreground">本机可被发现</span>
-        <div class="size-2 rounded-full bg-success" />
+        <div class="size-2 rounded-full bg-success shrink-0" />
         <span class="text-xs font-medium text-success">在线</span>
-        <span v-if="deviceStore.localDevice" class="text-xs font-mono bg-muted px-2 py-1 rounded">
+        <span
+          v-if="deviceStore.localDevice"
+          class="text-xs font-mono bg-muted px-2 py-1 rounded truncate max-w-[160px] sm:max-w-none"
+        >
           {{ deviceStore.localDevice.ip }}:{{ deviceStore.localDevice.port }}
         </span>
       </div>

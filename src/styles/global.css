@@ -42,7 +42,7 @@ body {
 }
 
 #app {
-  height: 100vh;
+  height: 100dvh;
   width: 100vw;
   overflow: hidden;
 }
@@ -59,9 +59,8 @@ svg {
   border-color: hsl(var(--border));
 }
 
-/* Mobile safe area */
+/* Mobile safe area - handled by header/bottom nav */
 body {
-  padding-bottom: env(safe-area-inset-bottom);
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
