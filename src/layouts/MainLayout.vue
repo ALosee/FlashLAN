@@ -1,12 +1,15 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { SButton } from '@/ui/components/button'
 import { SIcon } from '@/ui/components/icon'
 import { SSeparator } from '@/ui/components/separator'
 import { SBadge } from '@/ui/components/badge'
+import { useDeviceStore } from '@/stores/device'
 
 const router = useRouter()
 const route = useRoute()
+const deviceStore = useDeviceStore()
 
 const menus = [
   { label: '传文件', icon: 'lucide:upload', path: '/' },
@@ -18,6 +21,10 @@ const menus = [
 function navTo(path: string) {
   router.push(path)
 }
+
+onMounted(() => {
+  deviceStore.fetchLocal()
+})
 </script>
 
 <template>
@@ -61,8 +68,14 @@ function navTo(path: string) {
             MB
           </div>
           <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium truncate leading-none">MacBook Pro</div>
-            <div class="text-xs text-muted-foreground truncate mt-1">192.168.1.101</div>
+            <div class="text-sm font-medium truncate leading-none">
+              {{ deviceStore.localDevice?.name || '本机' }}
+            </div>
+            <div class="text-xs text-muted-foreground truncate mt-1 font-mono">
+              {{ deviceStore.localDevice?.ip || '获取中...' }}:{{
+                deviceStore.localDevice?.port || 17321
+              }}
+            </div>
           </div>
           <div class="size-2 rounded-full bg-success shrink-0" />
         </div>

@@ -1,29 +1,43 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 
 export interface Device {
   id: string
   name: string
   ip: string
   platform: string
-  online: boolean
+  port: number
+  online?: boolean
 }
 
 export const useDeviceStore = defineStore('device', () => {
   const devices = ref<Device[]>([])
   const isDiscovering = ref(false)
+  const localDevice = ref<Device | null>(null)
+  const error = ref<string | null>(null)
+
+  async function fetchLocal() {
+    try {
+      const info = await invoke<Device>('get_device_info')
+      localDevice.value = { ...info, online: true }
+    } catch (e) {
+      error.value = String(e)
+    }
+  }
 
   async function discover() {
     isDiscovering.value = true
-    // TODO: invoke('discover_devices')
-    setTimeout(() => {
-      devices.value = [
-        { id: '1', name: 'MacBook Air', ip: '192.168.1.102', platform: 'macos', online: true },
-        { id: '2', name: 'Windows PC', ip: '192.168.1.105', platform: 'windows', online: true },
-      ]
+    error.value = null
+    try {
+      const result = await invoke<Device[]>('discover_devices')
+      devices.value = result.map(d => ({ ...d, online: true }))
+    } catch (e) {
+      error.value = String(e)
+    } finally {
       isDiscovering.value = false
-    }, 800)
+    }
   }
 
-  return { devices, isDiscovering, discover }
+  return { devices, isDiscovering, localDevice, error, fetchLocal, discover }
 })

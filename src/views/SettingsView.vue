@@ -1,15 +1,24 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { SCard } from '@/ui/components/card'
 import { SButton } from '@/ui/components/button'
 import { SInput } from '@/ui/components/input'
 import { SSwitch } from '@/ui/components/switch'
 import { SIcon } from '@/ui/components/icon'
 import { SSeparator } from '@/ui/components/separator'
+import { useDeviceStore } from '@/stores/device'
 
-const savePath = ref('/Users/jack/Downloads/FlashLAN')
-const deviceName = ref('MacBook Pro')
+const deviceStore = useDeviceStore()
+const savePath = ref('~/Downloads/FlashLAN')
+const deviceName = ref('')
 const autoReceive = ref(false)
+
+onMounted(async () => {
+  await deviceStore.fetchLocal()
+  if (deviceStore.localDevice) {
+    deviceName.value = deviceStore.localDevice.name
+  }
+})
 </script>
 
 <template>
@@ -72,10 +81,27 @@ const autoReceive = ref(false)
             </div>
             <div>
               <div class="text-sm font-medium">端口</div>
-              <div class="text-xs text-muted-foreground">发现 5353 / 传输 17321</div>
+              <div class="text-xs text-muted-foreground">发现 mDNS / 传输 17321</div>
             </div>
           </div>
           <span class="text-xs font-mono bg-muted px-2.5 py-1 rounded-md">17321</span>
+        </div>
+
+        <div class="py-4 flex items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+              <SIcon icon="lucide:info" />
+            </div>
+            <div>
+              <div class="text-sm font-medium">本机信息</div>
+              <div class="text-xs text-muted-foreground font-mono">
+                {{ deviceStore.localDevice?.id || '-' }}
+              </div>
+            </div>
+          </div>
+          <span class="text-xs bg-muted px-2 py-1 rounded">
+            {{ deviceStore.localDevice?.platform || '-' }}
+          </span>
         </div>
       </div>
     </SCard>
@@ -84,7 +110,7 @@ const autoReceive = ref(false)
 
     <div class="text-xs text-muted-foreground flex items-center gap-2">
       <SIcon icon="lucide:info" class="text-xs" />
-      FlashLAN v0.1.0 · Tauri 2 · Vue 3 · SoybeanUI · UnoCSS
+      FlashLAN v0.1.0 · Tauri 2 · Vue 3 · SoybeanUI · UnoCSS · mDNS
     </div>
   </div>
 </template>
