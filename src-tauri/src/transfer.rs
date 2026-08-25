@@ -65,8 +65,16 @@ async fn handle_incoming(mut socket: TcpStream, save_dir: PathBuf, app: Arc<AppH
         header_buf.push(byte[0]);
         if header_buf.len() > 8192 { return Err("header too large".into()); }
     }
-    let header: FileHeader = serde_json::from_slice(&header_buf).map_err(|e| format!("header json: {e}"))?;
+    let header_str = String::from_utf8_lossy(&header_buf).to_string();
+    println!("Received header: {}", header_str);
+    let header: FileHeader = serde_json::from_slice(&header_buf).map_err(|e| {
+        let msg = format!("header json: {e} header={}", header_str);
+        eprintln!("{}", msg);
+        msg
+    })?;
+    println!("Parsed header: file_name={} size={} task_id={}", header.file_name, header.file_size, header.task_id);
     let file_path = save_dir.join(&header.file_name);
+    println!("Saving to {:?}", file_path);
     // Avoid overwrite: add suffix if exists
     let mut final_path = file_path.clone();
     let mut counter = 1;
@@ -76,7 +84,13 @@ async fn handle_incoming(mut socket: TcpStream, save_dir: PathBuf, app: Arc<AppH
         final_path = save_dir.join(format!("{stem}_{counter}{ext}"));
         counter += 1;
     }
-    let mut file = tokio::fs::File::create(&final_path).await.map_err(|e| e.to_string())?;
+    println!("Creating file {:?}", final_path);
+    let mut file = tokio::fs::File::create(&final_path).await.map_err(|e| {
+        let msg = format!("create file {:?}: {e}", final_path);
+        eprintln!("{}", msg);
+        msg
+    })?;
+    println!("File created, start receiving");
     let mut received: u64 = 0;
     let total = header.file_size;
     let mut buf = vec![0u8; CHUNK_SIZE];
@@ -159,15 +173,30 @@ pub async fn send_file(path: String, target_ip: String, target_port: u16, app: A
     let mut sent: u64 = 0;
     let start = std::time::Instant::now();
     let mut last_emit = std::time::Instant::now();
+    println!("Start sending file {} ({} bytes)", file_name, file_size);
     loop {
-        let n = file.read(&mut buf).await.map_err(|e| e.to_string())?;
-        if n == 0 { break; }
-        socket.write_all(&buf[..n]).await.map_err(|e| e.to_string())?;
+        let n = file.read(&mut buf).await.map_err(|e| {
+            let msg = format!("read file: {e}");
+            eprintln!("{}", msg);
+            msg
+        })?;
+        if n == 0 { 
+            println!("File read complete, sent {} bytes", sent);
+            break; 
+        }
+        println!("Read {} bytes, writing to socket...", n);
+        socket.write_all(&buf[..n]).await.map_err(|e| {
+            let msg = format!("write socket: {e}");
+            eprintln!("{}", msg);
+            msg
+        })?;
         sent += n as u64;
+        println!("Sent {}/{} ({:.1}%)", sent, file_size, if file_size>0 { sent as f64 / file_size as f64 *100.0 } else {0.0});
         let progress = if file_size > 0 { (sent as f64 / file_size as f64) * 100.0 } else { 0.0 };
         let elapsed = start.elapsed().as_secs_f64();
         let speed = if elapsed > 0.0 { sent as f64 / elapsed } else { 0.0 };
         if last_emit.elapsed().as_millis() > 100 || sent == file_size {
+            println!("Emit progress {}% {}/{} speed {:.1}", progress, sent, file_size, speed);
             let _ = app.emit("transfer_progress", TransferProgress {
                 task_id: task_id.clone(),
                 file_name: file_name.clone(),
