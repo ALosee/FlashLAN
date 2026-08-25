@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { SCard } from '@/ui/components/card'
-import { SButton } from '@/ui/components/button'
-import { SInput } from '@/ui/components/input'
-import { SSwitch } from '@/ui/components/switch'
-import { SIcon } from '@/ui/components/icon'
-import { SSeparator } from '@/ui/components/separator'
+import { ref } from 'vue';
+import { SCard } from '@/ui/components/card';
+import { SButton } from '@/ui/components/button';
+import { SInput } from '@/ui/components/input';
+import { SSwitch } from '@/ui/components/switch';
+import { SIcon } from '@/ui/components/icon';
+import { SSeparator } from '@/ui/components/separator';
 
-const savePath = ref('/Users/jack/Downloads/FlashLAN')
-const deviceName = ref('MacBook Pro')
-const autoReceive = ref(false)
+const savePath = ref('/Users/jack/Downloads/FlashLAN');
+const deviceName = ref('MacBook Pro');
+const autoReceive = ref(false);
 </script>
 
 <template>
@@ -41,7 +41,9 @@ const autoReceive = ref(false)
             </div>
             <div>
               <div class="text-sm font-medium">保存路径</div>
-              <div class="text-xs text-muted-foreground font-mono truncate max-w-[260px]">{{ savePath }}</div>
+              <div class="text-xs text-muted-foreground font-mono truncate max-w-[260px]">
+                {{ savePath }}
+              </div>
             </div>
           </div>
           <SButton variant="outline" size="sm">

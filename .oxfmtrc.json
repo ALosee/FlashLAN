@@ -1,0 +1,17 @@
+{
+  "ignorePatterns": [
+    "src/typings/components.d.ts",
+    "src/ui",
+    "dist",
+    "node_modules",
+    "src-tauri/target"
+  ],
+  "printWidth": 100,
+  "singleQuote": true,
+  "trailingComma": "none",
+  "arrowParens": "avoid",
+  "htmlWhitespaceSensitivity": "ignore",
+  "experimentalSortPackageJson": {
+    "sortScripts": true
+  }
+}

@@ -12,11 +12,7 @@
     },
     "sbean": {
       "type": "local",
-      "command": [
-        "npx",
-        "sbean@latest",
-        "mcp"
-      ],
+      "command": ["npx", "sbean@latest", "mcp"],
       "enabled": true
     }
   }

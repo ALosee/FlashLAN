@@ -1,22 +1,22 @@
 <script setup lang="ts">
-import { useRouter, useRoute } from 'vue-router'
-import { SButton } from '@/ui/components/button'
-import { SIcon } from '@/ui/components/icon'
-import { SSeparator } from '@/ui/components/separator'
-import { SBadge } from '@/ui/components/badge'
+import { useRouter, useRoute } from 'vue-router';
+import { SButton } from '@/ui/components/button';
+import { SIcon } from '@/ui/components/icon';
+import { SSeparator } from '@/ui/components/separator';
+import { SBadge } from '@/ui/components/badge';
 
-const router = useRouter()
-const route = useRoute()
+const router = useRouter();
+const route = useRoute();
 
 const menus = [
   { label: '传文件', icon: 'lucide:upload', path: '/' },
   { label: '附近设备', icon: 'lucide:scan-search', path: '/devices' },
   { label: '传输记录', icon: 'lucide:history', path: '/history' },
-  { label: '设置', icon: 'lucide:settings', path: '/settings' },
-]
+  { label: '设置', icon: 'lucide:settings', path: '/settings' }
+];
 
 function navTo(path: string) {
-  router.push(path)
+  router.push(path);
 }
 </script>
 
@@ -25,7 +25,9 @@ function navTo(path: string) {
     <!-- Sidebar -->
     <aside class="w-60 shrink-0 border-r bg-card flex flex-col">
       <div class="h-14 flex items-center gap-3 px-5 shrink-0">
-        <div class="size-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shrink-0">
+        <div
+          class="size-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shrink-0"
+        >
           <SIcon icon="lucide:zap" class="text-base" />
         </div>
         <span class="font-bold text-base tracking-tight">FlashLAN</span>
@@ -53,7 +55,9 @@ function navTo(path: string) {
       <!-- Device info footer -->
       <div class="p-3 shrink-0">
         <div class="flex items-center gap-3 px-3 py-3 rounded-lg bg-muted">
-          <div class="size-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold shrink-0">
+          <div
+            class="size-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold shrink-0"
+          >
             MB
           </div>
           <div class="flex-1 min-w-0">
@@ -67,7 +71,7 @@ function navTo(path: string) {
 
     <!-- Main -->
     <main class="flex-1 min-w-0 overflow-auto bg-muted/20">
-      <router-view />
+      <RouterView />
     </main>
   </div>
 </template>

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { SCard } from '@/ui/components/card'
-import { SButton } from '@/ui/components/button'
-import { SIcon } from '@/ui/components/icon'
-import { SBadge } from '@/ui/components/badge'
+import { SCard } from '@/ui/components/card';
+import { SButton } from '@/ui/components/button';
+import { SIcon } from '@/ui/components/icon';
+import { SBadge } from '@/ui/components/badge';
 </script>
 
 <template>
@@ -19,7 +19,9 @@ import { SBadge } from '@/ui/components/badge'
         </div>
         <div>
           <div class="text-sm font-medium">设备发现由 Rust 后端实现</div>
-          <div class="text-xs text-muted-foreground mt-1">此处为前端占位，下一步将对接 invoke('discover_devices')</div>
+          <div class="text-xs text-muted-foreground mt-1">
+            此处为前端占位，下一步将对接 invoke('discover_devices')
+          </div>
         </div>
         <div class="flex items-center justify-center gap-2 pt-2">
           <SButton size="sm">

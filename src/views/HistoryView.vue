@@ -1,13 +1,34 @@
 <script setup lang="ts">
-import { SCard } from '@/ui/components/card'
-import { SIcon } from '@/ui/components/icon'
-import { SBadge } from '@/ui/components/badge'
+import { SCard } from '@/ui/components/card';
+import { SIcon } from '@/ui/components/icon';
+import { SBadge } from '@/ui/components/badge';
 
 const records = [
-  { name: 'design-spec-2026.pdf', size: '24.5 MB', time: '昨天 14:32', from: 'MacBook Air', status: '已完成', icon: 'lucide:file-text' },
-  { name: 'project-assets.zip', size: '128.3 MB', time: '昨天 10:15', from: 'Windows PC', status: '已完成', icon: 'lucide:file-archive' },
-  { name: 'demo-video.mp4', size: '312.0 MB', time: '前天 18:20', from: 'iPhone 15', status: '已完成', icon: 'lucide:file-video' },
-]
+  {
+    name: 'design-spec-2026.pdf',
+    size: '24.5 MB',
+    time: '昨天 14:32',
+    from: 'MacBook Air',
+    status: '已完成',
+    icon: 'lucide:file-text'
+  },
+  {
+    name: 'project-assets.zip',
+    size: '128.3 MB',
+    time: '昨天 10:15',
+    from: 'Windows PC',
+    status: '已完成',
+    icon: 'lucide:file-archive'
+  },
+  {
+    name: 'demo-video.mp4',
+    size: '312.0 MB',
+    time: '前天 18:20',
+    from: 'iPhone 15',
+    status: '已完成',
+    icon: 'lucide:file-video'
+  }
+];
 </script>
 
 <template>
@@ -18,7 +39,11 @@ const records = [
     </div>
     <SCard>
       <div class="divide-y -m-6">
-        <div v-for="item in records" :key="item.name" class="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors">
+        <div
+          v-for="item in records"
+          :key="item.name"
+          class="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors"
+        >
           <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
             <SIcon :icon="item.icon" />
           </div>

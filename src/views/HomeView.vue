@@ -1,31 +1,31 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { SButton } from '@/ui/components/button'
-import { SCard } from '@/ui/components/card'
-import { SIcon } from '@/ui/components/icon'
-import { SBadge } from '@/ui/components/badge'
-import { SSeparator } from '@/ui/components/separator'
+import { ref } from 'vue';
+import { SButton } from '@/ui/components/button';
+import { SCard } from '@/ui/components/card';
+import { SIcon } from '@/ui/components/icon';
+import { SBadge } from '@/ui/components/badge';
+import { SSeparator } from '@/ui/components/separator';
 
-const isDragging = ref(false)
+const isDragging = ref(false);
 
 function onDragOver(e: DragEvent) {
-  e.preventDefault()
-  isDragging.value = true
+  e.preventDefault();
+  isDragging.value = true;
 }
 function onDragLeave() {
-  isDragging.value = false
+  isDragging.value = false;
 }
 function onDrop(e: DragEvent) {
-  e.preventDefault()
-  isDragging.value = false
+  e.preventDefault();
+  isDragging.value = false;
   // TODO: handle file drop -> invoke Tauri
 }
 
 const devices = [
   { name: 'MacBook Air', ip: '192.168.1.102', icon: 'lucide:laptop', online: true },
   { name: 'Windows PC', ip: '192.168.1.105', icon: 'lucide:monitor', online: true },
-  { name: 'iPhone 15', icon: 'lucide:smartphone', ip: '192.168.1.201', online: true },
-]
+  { name: 'iPhone 15', icon: 'lucide:smartphone', ip: '192.168.1.201', online: true }
+];
 </script>
 
 <template>
@@ -110,8 +110,12 @@ const devices = [
         </SCard>
 
         <!-- Add manual IP -->
-        <SCard class="border-dashed! bg-muted/20 hover:bg-card hover:border-border transition-colors min-h-[168px] flex flex-col items-center justify-center text-center cursor-pointer p-4!">
-          <div class="size-8 rounded-full border flex items-center justify-center text-muted-foreground">
+        <SCard
+          class="border-dashed! bg-muted/20 hover:bg-card hover:border-border transition-colors min-h-[168px] flex flex-col items-center justify-center text-center cursor-pointer p-4!"
+        >
+          <div
+            class="size-8 rounded-full border flex items-center justify-center text-muted-foreground"
+          >
             <SIcon icon="lucide:plus" />
           </div>
           <div class="text-sm font-medium mt-2">手动添加设备</div>
@@ -149,7 +153,11 @@ const devices = [
         </div>
         <div class="text-right shrink-0 flex flex-col items-end gap-1">
           <div class="text-sm font-medium">62%</div>
-          <SButton variant="ghost" size="xs" class="h-6 px-2 text-xs text-muted-foreground hover:text-destructive">
+          <SButton
+            variant="ghost"
+            size="xs"
+            class="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+          >
             <SIcon icon="lucide:x" class="text-xs" />
             取消
           </SButton>

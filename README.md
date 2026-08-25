@@ -4,16 +4,16 @@
 
 ## 技术栈
 
-| 层级 | 技术 | 版本 |
-|------|------|------|
-| 桌面壳 | Tauri 2 | 2.x |
-| 前端框架 | Vue 3 | 3.5.x |
-| 语言 | TypeScript | 5.6 |
-| UI库 | SoybeanUI (@soybeanjs/ui) | 0.30.0 |
-| CSS引擎 | UnoCSS + @soybeanjs/ui-uno presetSbean | 66.x |
-| 状态管理 | Pinia | 3.x |
-| 路由 | Vue Router | 4.x |
-| 后端 | Rust | 1.7x |
+| 层级     | 技术                                   | 版本   |
+| -------- | -------------------------------------- | ------ |
+| 桌面壳   | Tauri 2                                | 2.x    |
+| 前端框架 | Vue 3                                  | 3.5.x  |
+| 语言     | TypeScript                             | 5.6    |
+| UI库     | SoybeanUI (@soybeanjs/ui)              | 0.30.0 |
+| CSS引擎  | UnoCSS + @soybeanjs/ui-uno presetSbean | 66.x   |
+| 状态管理 | Pinia                                  | 3.x    |
+| 路由     | Vue Router                             | 4.x    |
+| 后端     | Rust                                   | 1.7x   |
 
 ## 快速开始
 
@@ -87,6 +87,8 @@ npx sbean view button
 - [ ] 实现 TCP/QUIC 文件传输 + 进度事件
 - [ ] 拖拽/剪贴板集成
 - [ ] 托盘、通知、自动接收设置
+
 ```
 
 ---
+```
