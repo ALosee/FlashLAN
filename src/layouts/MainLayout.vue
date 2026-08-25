@@ -58,7 +58,7 @@ onMounted(() => {
     <div v-if="showMobileMenu" class="fixed inset-0 z-40 md:hidden" @click="showMobileMenu = false">
       <div class="absolute inset-0 bg-black/40" />
       <div
-        class="absolute left-0 top-0 bottom-0 w-72 bg-card flex flex-col p-3 shadow-xl"
+        class="absolute left-0 top-0 bottom-0 w-72 bg-card flex flex-col p-3 pt-[calc(0.75rem+env(safe-area-inset-top))] shadow-xl"
         @click.stop
       >
         <div class="flex items-center gap-3 px-2 py-3">
