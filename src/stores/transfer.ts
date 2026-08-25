@@ -56,17 +56,22 @@ export const useTransferStore = defineStore('transfer', () => {
 
   async function ensureListener() {
     if (isListening.value) return
+    if (!isTauri()) return
     isListening.value = true
-    await listen<ProgressPayload>('transfer_progress', event => {
-      updateProgress(event.payload)
-    })
-    await listen<CompletePayload>('transfer_complete', event => {
-      const task = tasks.value.find(t => t.id === event.payload.task_id)
-      if (task) {
-        task.status = event.payload.success ? 'completed' : 'failed'
-        task.progress = 100
-      }
-    })
+    try {
+      await listen<ProgressPayload>('transfer_progress', event => {
+        updateProgress(event.payload)
+      })
+      await listen<CompletePayload>('transfer_complete', event => {
+        const task = tasks.value.find(t => t.id === event.payload.task_id)
+        if (task) {
+          task.status = event.payload.success ? 'completed' : 'failed'
+          task.progress = 100
+        }
+      })
+    } catch {
+      isListening.value = false
+    }
   }
 
   async function sendFile(filePath: string, targetIp: string, targetPort?: number) {

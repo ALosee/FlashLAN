@@ -39,6 +39,30 @@ export const useDeviceStore = defineStore('device', () => {
   }
 
   async function discover() {
+    if (!isTauri()) {
+      isDiscovering.value = true
+      await new Promise(r => setTimeout(r, 600))
+      devices.value = [
+        {
+          id: 'mock-1',
+          name: 'MacBook Air (Mock)',
+          ip: '192.168.1.102',
+          platform: 'macos',
+          port: 17321,
+          online: true,
+        },
+        {
+          id: 'mock-2',
+          name: 'Windows PC (Mock)',
+          ip: '192.168.1.105',
+          platform: 'windows',
+          port: 17321,
+          online: true,
+        },
+      ]
+      isDiscovering.value = false
+      return
+    }
     isDiscovering.value = true
     error.value = null
     try {
