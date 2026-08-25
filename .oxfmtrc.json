@@ -8,10 +8,11 @@
   ],
   "printWidth": 100,
   "singleQuote": true,
-  "trailingComma": "none",
+  "trailingComma": "all",
   "arrowParens": "avoid",
   "htmlWhitespaceSensitivity": "ignore",
   "experimentalSortPackageJson": {
     "sortScripts": true
-  }
+  },
+  "semi": false
 }

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { SCard } from '@/ui/components/card';
-import { SButton } from '@/ui/components/button';
-import { SIcon } from '@/ui/components/icon';
-import { SBadge } from '@/ui/components/badge';
+import { SCard } from '@/ui/components/card'
+import { SButton } from '@/ui/components/button'
+import { SIcon } from '@/ui/components/icon'
+import { SBadge } from '@/ui/components/badge'
 </script>
 
 <template>

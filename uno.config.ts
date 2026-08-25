@@ -1,5 +1,5 @@
-import { defineConfig } from 'unocss';
-import { presetSbean } from '@soybeanjs/ui-uno';
+import { defineConfig } from 'unocss'
+import { presetSbean } from '@soybeanjs/ui-uno'
 
 export default defineConfig({
   presets: [
@@ -7,8 +7,8 @@ export default defineConfig({
       overrides: {
         resetCSS: true,
         globalCSS: true,
-        uiCSS: true
-      }
-    })
-  ]
-});
+        uiCSS: true,
+      },
+    }),
+  ],
+})

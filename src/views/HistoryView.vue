@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { SCard } from '@/ui/components/card';
-import { SIcon } from '@/ui/components/icon';
-import { SBadge } from '@/ui/components/badge';
+import { SCard } from '@/ui/components/card'
+import { SIcon } from '@/ui/components/icon'
+import { SBadge } from '@/ui/components/badge'
 
 const records = [
   {
@@ -10,7 +10,7 @@ const records = [
     time: '昨天 14:32',
     from: 'MacBook Air',
     status: '已完成',
-    icon: 'lucide:file-text'
+    icon: 'lucide:file-text',
   },
   {
     name: 'project-assets.zip',
@@ -18,7 +18,7 @@ const records = [
     time: '昨天 10:15',
     from: 'Windows PC',
     status: '已完成',
-    icon: 'lucide:file-archive'
+    icon: 'lucide:file-archive',
   },
   {
     name: 'demo-video.mp4',
@@ -26,9 +26,9 @@ const records = [
     time: '前天 18:20',
     from: 'iPhone 15',
     status: '已完成',
-    icon: 'lucide:file-video'
-  }
-];
+    icon: 'lucide:file-video',
+  },
+]
 </script>
 
 <template>

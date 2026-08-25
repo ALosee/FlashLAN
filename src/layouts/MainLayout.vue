@@ -1,22 +1,22 @@
 <script setup lang="ts">
-import { useRouter, useRoute } from 'vue-router';
-import { SButton } from '@/ui/components/button';
-import { SIcon } from '@/ui/components/icon';
-import { SSeparator } from '@/ui/components/separator';
-import { SBadge } from '@/ui/components/badge';
+import { useRouter, useRoute } from 'vue-router'
+import { SButton } from '@/ui/components/button'
+import { SIcon } from '@/ui/components/icon'
+import { SSeparator } from '@/ui/components/separator'
+import { SBadge } from '@/ui/components/badge'
 
-const router = useRouter();
-const route = useRoute();
+const router = useRouter()
+const route = useRoute()
 
 const menus = [
   { label: '传文件', icon: 'lucide:upload', path: '/' },
   { label: '附近设备', icon: 'lucide:scan-search', path: '/devices' },
   { label: '传输记录', icon: 'lucide:history', path: '/history' },
-  { label: '设置', icon: 'lucide:settings', path: '/settings' }
-];
+  { label: '设置', icon: 'lucide:settings', path: '/settings' },
+]
 
 function navTo(path: string) {
-  router.push(path);
+  router.push(path)
 }
 </script>
 

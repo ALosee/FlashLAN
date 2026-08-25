@@ -1,31 +1,31 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { SButton } from '@/ui/components/button';
-import { SCard } from '@/ui/components/card';
-import { SIcon } from '@/ui/components/icon';
-import { SBadge } from '@/ui/components/badge';
-import { SSeparator } from '@/ui/components/separator';
+import { ref } from 'vue'
+import { SButton } from '@/ui/components/button'
+import { SCard } from '@/ui/components/card'
+import { SIcon } from '@/ui/components/icon'
+import { SBadge } from '@/ui/components/badge'
+import { SSeparator } from '@/ui/components/separator'
 
-const isDragging = ref(false);
+const isDragging = ref(false)
 
 function onDragOver(e: DragEvent) {
-  e.preventDefault();
-  isDragging.value = true;
+  e.preventDefault()
+  isDragging.value = true
 }
 function onDragLeave() {
-  isDragging.value = false;
+  isDragging.value = false
 }
 function onDrop(e: DragEvent) {
-  e.preventDefault();
-  isDragging.value = false;
+  e.preventDefault()
+  isDragging.value = false
   // TODO: handle file drop -> invoke Tauri
 }
 
 const devices = [
   { name: 'MacBook Air', ip: '192.168.1.102', icon: 'lucide:laptop', online: true },
   { name: 'Windows PC', ip: '192.168.1.105', icon: 'lucide:monitor', online: true },
-  { name: 'iPhone 15', icon: 'lucide:smartphone', ip: '192.168.1.201', online: true }
-];
+  { name: 'iPhone 15', icon: 'lucide:smartphone', ip: '192.168.1.201', online: true },
+]
 </script>
 
 <template>
