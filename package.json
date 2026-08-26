@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "vue-tsc --noEmit && vite build",
+    "build:android": "tauri android build --apk",
+    "build:macos": "tauri build --bundles dmg",
     "check": "pnpm typecheck && pnpm lint:check && pnpm fmt:check",
     "dev": "vite",
     "fmt": "oxfmt",
