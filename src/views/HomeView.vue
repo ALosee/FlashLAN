@@ -8,7 +8,7 @@ import { SDialog } from '@/ui/components/dialog'
 import { SIcon } from '@/ui/components/icon'
 import { SInput } from '@/ui/components/input'
 import { SBadge } from '@/ui/components/badge'
-import { isTauri } from '@/utils/tauri'
+import { isMobilePlatform, isTauri } from '@/utils/tauri'
 import { useDeviceStore } from '@/stores/device'
 import { type TransferTask, useTransferStore } from '@/stores/transfer'
 
@@ -18,6 +18,7 @@ const router = useRouter()
 
 const isDragging = ref(false)
 const selectedFiles = ref<string[]>([])
+const isMobile = isMobilePlatform()
 const manualIp = ref('')
 const manualPort = ref('17321')
 const showAddDevice = ref(false)
@@ -330,9 +331,9 @@ onMounted(async () => {
         <div class="mt-5 flex items-center justify-center gap-3" @click.stop>
           <SButton @click="pickFiles">
             <SIcon icon="lucide:file-up" />
-            选择文件
+            {{ isMobile ? '选择多个文件' : '选择文件' }}
           </SButton>
-          <SButton variant="outline" @click="pickFolder">
+          <SButton v-if="!isMobile" variant="outline" @click="pickFolder">
             <SIcon icon="lucide:folder" />
             选择文件夹
           </SButton>

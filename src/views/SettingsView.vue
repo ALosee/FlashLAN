@@ -12,7 +12,7 @@ import { SIcon } from '@/ui/components/icon'
 import { SSeparator } from '@/ui/components/separator'
 import { useDeviceStore } from '@/stores/device'
 import { useTransferStore } from '@/stores/transfer'
-import { isTauri } from '@/utils/tauri'
+import { isMobilePlatform, isTauri } from '@/utils/tauri'
 
 const deviceStore = useDeviceStore()
 const transferStore = useTransferStore()
@@ -23,6 +23,7 @@ const isSavingName = ref(false)
 const isChoosingPath = ref(false)
 const settingsMessage = ref('')
 const settingsError = ref('')
+const isMobile = isMobilePlatform()
 const theme = useTheme()
 const themeMode = computed<ThemeModePreference>(() => theme?.mode.value ?? 'light')
 
@@ -212,12 +213,20 @@ onMounted(loadSettings)
             </div>
             <div>
               <div class="text-sm font-medium">保存路径</div>
-              <div class="text-xs text-muted-foreground truncate max-w-[360px]" :title="savePath">
+              <div v-if="isMobile" class="text-xs text-muted-foreground">
+                文件将保存到 Download/FlashLAN
+              </div>
+              <div
+                v-else
+                class="text-xs text-muted-foreground truncate max-w-[360px]"
+                :title="savePath"
+              >
                 {{ displayedSavePath || '加载中...' }}
               </div>
             </div>
           </div>
           <SButton
+            v-if="!isMobile"
             variant="outline"
             size="sm"
             class="shrink-0"
@@ -229,17 +238,19 @@ onMounted(loadSettings)
           </SButton>
         </div>
 
-        <div class="py-3 md:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div class="flex items-center gap-3">
+        <div class="py-3 md:py-4 flex items-center justify-between gap-3">
+          <div class="flex min-w-0 items-center gap-3">
             <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
               <SIcon icon="lucide:shield-check" />
             </div>
-            <div>
+            <div class="min-w-0">
               <div class="text-sm font-medium">可信设备自动接收</div>
-              <div class="text-xs text-muted-foreground">开启后可信设备发送文件将自动接收</div>
+              <div class="text-xs text-muted-foreground truncate">
+                开启后可信设备发送文件将自动接收
+              </div>
             </div>
           </div>
-          <SSwitch v-model="autoReceive" />
+          <SSwitch v-model="autoReceive" class="shrink-0" />
         </div>
 
         <div class="py-3 md:py-4 flex flex-col gap-3">
@@ -253,7 +264,7 @@ onMounted(loadSettings)
             </div>
           </div>
           <div
-            class="grid grid-cols-1 sm:grid-cols-3 gap-2 pl-0 sm:pl-12"
+            class="grid grid-cols-3 gap-1.5 pl-0 sm:gap-2 sm:pl-12"
             role="radiogroup"
             aria-label="主题模式"
           >
@@ -263,18 +274,18 @@ onMounted(loadSettings)
               type="button"
               role="radio"
               :aria-checked="themeMode === option.value"
-              class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors"
+              class="flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border px-1.5 py-2 text-center transition-colors sm:min-h-0 sm:flex-row sm:justify-start sm:gap-3 sm:px-3 sm:py-2.5 sm:text-left"
               :class="
                 themeMode === option.value
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border bg-background hover:bg-muted'
+                  ? 'border-primary bg-primary/10 text-primary shadow-sm'
+                  : 'border-border bg-muted/20 hover:bg-muted'
               "
               @click="selectThemeMode(option.value)"
             >
               <SIcon :icon="option.icon" class="text-base shrink-0" />
               <span class="min-w-0">
-                <span class="block text-sm font-medium">{{ option.label }}</span>
-                <span class="block text-xs text-muted-foreground truncate">
+                <span class="block text-xs font-medium sm:text-sm">{{ option.label }}</span>
+                <span class="hidden text-xs text-muted-foreground truncate sm:block">
                   {{ option.description }}
                 </span>
               </span>
