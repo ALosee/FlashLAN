@@ -15,6 +15,17 @@
 - Android 接收文件时优先保存到公共 `Download/FlashLAN` 目录
 - 支持桌面端和 Android；浏览器模式可用于预览界面
 
+## 界面预览
+
+### 桌面端与 Android
+
+| 桌面端                                                                                | Android                                                                                 |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| <img src="docs/screenshots/desktop-transfer.png" alt="桌面端传文件页面" width="520">  | <img src="docs/screenshots/android-transfer.jpg" alt="Android 传文件页面" width="240">  |
+| <img src="docs/screenshots/desktop-devices.png" alt="桌面端附近设备页面" width="520"> | <img src="docs/screenshots/android-devices.jpg" alt="Android 附近设备页面" width="240"> |
+| <img src="docs/screenshots/desktop-history.png" alt="桌面端传输记录页面" width="520"> | <img src="docs/screenshots/android-history.jpg" alt="Android 传输记录页面" width="240"> |
+| <img src="docs/screenshots/desktop-settings.png" alt="桌面端设置页面" width="520">    | <img src="docs/screenshots/android-settings.jpg" alt="Android 设置页面" width="240">    |
+
 ## 技术栈
 
 | 层级          | 技术               |
