@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, RwLock,
     },
     time::Duration,
 };
@@ -63,10 +63,20 @@ pub struct TransferManager {
     inner: Arc<TransferManagerInner>,
 }
 
-#[derive(Default)]
 struct TransferManagerInner {
     pending: Mutex<HashMap<String, PendingTransferRequest>>,
     auto_receive: AtomicBool,
+    save_dir: RwLock<PathBuf>,
+}
+
+impl Default for TransferManagerInner {
+    fn default() -> Self {
+        Self {
+            pending: Mutex::new(HashMap::new()),
+            auto_receive: AtomicBool::new(false),
+            save_dir: RwLock::new(PathBuf::new()),
+        }
+    }
 }
 
 struct PendingTransferRequest {
@@ -77,6 +87,20 @@ struct PendingTransferRequest {
 impl TransferManager {
     pub fn set_auto_receive(&self, enabled: bool) {
         self.inner.auto_receive.store(enabled, Ordering::Relaxed);
+    }
+
+    pub fn set_save_dir(&self, save_dir: PathBuf) {
+        if let Ok(mut current) = self.inner.save_dir.write() {
+            *current = save_dir;
+        }
+    }
+
+    pub fn save_dir(&self) -> Result<PathBuf, String> {
+        self.inner
+            .save_dir
+            .read()
+            .map(|path| path.clone())
+            .map_err(|_| "save path state is unavailable".to_string())
     }
 
     fn auto_receive(&self) -> bool {
@@ -163,11 +187,7 @@ pub async fn test_connection(target_ip: String, target_port: u16) -> Result<(), 
     Ok(())
 }
 
-pub async fn start_file_server(
-    app: AppHandle,
-    save_dir: PathBuf,
-    manager: TransferManager,
-) -> Result<(), String> {
+pub async fn start_file_server(app: AppHandle, manager: TransferManager) -> Result<(), String> {
     let listener = TcpListener::bind(format!("0.0.0.0:{}", TRANSFER_PORT))
         .await
         .map_err(|e| format!("bind transfer port: {e}"))?;
@@ -179,17 +199,22 @@ pub async fn start_file_server(
                 continue;
             };
             let app_clone = app.clone();
-            let save_dir_clone = save_dir.clone();
             let manager_clone = manager.clone();
             tokio::spawn(async move {
-                if let Err(e) = handle_incoming(
-                    socket,
-                    save_dir_clone,
-                    app_clone,
-                    manager_clone,
-                    addr.to_string(),
-                )
-                .await
+                let save_dir = match manager_clone.save_dir() {
+                    Ok(path) if !path.as_os_str().is_empty() => path,
+                    Ok(_) => {
+                        eprintln!("save path is not configured");
+                        return;
+                    }
+                    Err(error) => {
+                        eprintln!("read save path failed: {error}");
+                        return;
+                    }
+                };
+                if let Err(e) =
+                    handle_incoming(socket, save_dir, app_clone, manager_clone, addr.to_string())
+                        .await
                 {
                     eprintln!("handle incoming from {addr}: {e}");
                 }
