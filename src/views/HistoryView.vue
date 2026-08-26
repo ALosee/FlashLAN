@@ -1,12 +1,38 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
+import { SButton } from '@/ui/components/button'
 import { SIcon } from '@/ui/components/icon'
-import { useTransferStore } from '@/stores/transfer'
+import { type TransferTask, useTransferStore } from '@/stores/transfer'
+import { isTauri } from '@/utils/tauri'
 
 const transferStore = useTransferStore()
 const records = computed(() =>
   transferStore.tasks.filter(task => task.status === 'completed' || task.status === 'failed'),
 )
+const completedCount = computed(
+  () => records.value.filter(item => item.status === 'completed').length,
+)
+const failedCount = computed(() => records.value.filter(item => item.status === 'failed').length)
+const openingRecordId = ref('')
+const feedback = ref('')
+const feedbackIsError = ref(false)
+const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
+
+function recordOpenPath(item: TransferTask) {
+  return item.fileOpenPath || item.filePath
+}
+
+function recordPathLabel(item: TransferTask) {
+  if (isAndroid && item.direction === 'send') return '来自手机文件'
+  return item.filePath
+}
+
+function canOpenRecord(item: TransferTask) {
+  const path = recordOpenPath(item)
+  if (!path) return false
+  return !isAndroid || (item.direction === 'receive' && path.startsWith('content://'))
+}
 
 function formatBytes(bytes: number) {
   if (!bytes) return '未知大小'
@@ -16,38 +42,127 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
 }
 
-function recordStatus(status: string) {
+function recordStatus(status: TransferTask['status']) {
   return status === 'completed' ? '已完成' : '失败'
+}
+
+function clearFeedback() {
+  feedback.value = ''
+  feedbackIsError.value = false
+}
+
+async function openRecordLocation(item: TransferTask) {
+  clearFeedback()
+  const path = recordOpenPath(item)
+  if (!path) {
+    feedbackIsError.value = true
+    feedback.value = '这条记录没有可用的本地文件路径'
+    return
+  }
+  if (isAndroid && !canOpenRecord(item)) {
+    feedbackIsError.value = true
+    feedback.value = '这条 Android 记录没有可用的文件 URI'
+    return
+  }
+  if (!isTauri()) {
+    feedbackIsError.value = true
+    feedback.value = '浏览器预览无法打开本机目录，请在桌面应用中使用此功能'
+    return
+  }
+
+  openingRecordId.value = item.id
+  try {
+    await invoke('open_file_location', { path, fileName: item.fileName })
+  } catch (error) {
+    feedbackIsError.value = true
+    feedback.value = String(error).replace(/^Error:\s*/, '') || '无法打开文件所在目录'
+  } finally {
+    openingRecordId.value = ''
+  }
+}
+
+function removeRecord(item: TransferTask) {
+  transferStore.removeTask(item.id)
+  feedbackIsError.value = false
+  feedback.value = `已删除「${item.fileName}」的传输记录`
+}
+
+function clearHistory() {
+  if (
+    typeof window !== 'undefined' &&
+    !window.confirm('确定清空全部传输记录吗？文件本身不会被删除。')
+  ) {
+    return
+  }
+  transferStore.clearHistory()
+  feedbackIsError.value = false
+  feedback.value = '传输记录已清空，文件本身未被删除'
 }
 </script>
 
 <template>
   <div class="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 md:p-8">
-    <div class="flex items-end justify-between gap-4">
-      <div>
+    <div class="relative min-w-0">
+      <div class="flex min-w-0 items-center gap-2 pr-20 sm:pr-36">
         <h1 class="text-2xl font-bold tracking-tight">传输记录</h1>
-        <p class="mt-1 text-sm text-muted-foreground">查看历史收发文件</p>
+        <span
+          v-if="records.length"
+          class="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+        >
+          {{ records.length }} 条
+        </span>
       </div>
-      <span
-        v-if="records.length"
-        class="shrink-0 rounded-full bg-muted/70 px-2.5 py-1 text-[11px] text-muted-foreground"
-      >
-        {{ records.length }} 条记录
-      </span>
+      <p class="mt-1 text-sm text-muted-foreground">
+        完整查看历史收发文件，文件本身不会因删除记录而受影响
+      </p>
+      <div class="absolute right-0 top-0 flex items-center gap-2">
+        <div
+          v-if="records.length"
+          class="hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex"
+        >
+          <span class="text-success">{{ completedCount }} 已完成</span>
+          <span v-if="failedCount" class="text-destructive">{{ failedCount }} 失败</span>
+        </div>
+        <SButton
+          v-if="records.length"
+          variant="outline"
+          size="sm"
+          class="shrink-0"
+          @click="clearHistory"
+        >
+          <SIcon icon="lucide:trash-2" />
+          <span class="hidden sm:inline">清空记录</span>
+          <span class="sm:hidden">清空</span>
+        </SButton>
+      </div>
     </div>
 
     <div
-      v-if="records.length"
-      class="overflow-hidden rounded-2xl border border-border/80 dark:border-border/10 bg-card shadow-sm"
+      v-if="feedback"
+      class="flex items-start gap-2 rounded-xl border px-3 py-2.5 text-xs"
+      :class="
+        feedbackIsError
+          ? 'border-destructive/15 bg-destructive/8 text-destructive'
+          : 'border-success/15 bg-success/8 text-success'
+      "
+      role="status"
     >
-      <div class="divide-y divide-border/70 dark:divide-border/10">
-        <div
-          v-for="item in records"
-          :key="item.id"
-          class="group grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3.5 transition-colors hover:bg-muted/30 sm:gap-4 sm:px-4"
-        >
+      <SIcon
+        :icon="feedbackIsError ? 'lucide:circle-alert' : 'lucide:circle-check'"
+        class="mt-0.5 shrink-0"
+      />
+      <span>{{ feedback }}</span>
+    </div>
+
+    <div v-if="records.length" class="space-y-3">
+      <article
+        v-for="item in records"
+        :key="item.id"
+        class="group relative overflow-hidden rounded-2xl border border-border/80 bg-card p-3.5 shadow-sm transition-all hover:border-primary/25 hover:shadow-md sm:p-4"
+      >
+        <div class="flex items-start gap-3 sm:gap-4">
           <div
-            class="flex size-11 items-center justify-center rounded-2xl"
+            class="flex size-11 shrink-0 items-center justify-center rounded-2xl"
             :class="
               item.status === 'completed'
                 ? 'bg-success/10 text-success'
@@ -59,52 +174,112 @@ function recordStatus(status: string) {
               class="text-lg"
             />
           </div>
-          <div class="min-w-0">
-            <div class="flex min-w-0 items-center gap-2 leading-5">
-              <div class="min-w-0 truncate text-sm font-semibold leading-5">
-                {{ item.fileName }}
+
+          <div class="min-w-0 flex-1">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="truncate text-sm font-semibold leading-5" :title="item.fileName">
+                  {{ item.fileName }}
+                </div>
+                <div
+                  class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground"
+                >
+                  <span>
+                    {{ item.direction === 'receive' ? '接收自' : '发送至' }} {{ item.targetIp }}
+                  </span>
+                  <span class="text-border">·</span>
+                  <span>{{ formatBytes(item.total) }}</span>
+                </div>
               </div>
-              <span class="shrink-0 whitespace-nowrap text-xs leading-5 text-muted-foreground">
-                · {{ formatBytes(item.total) }}
+              <span
+                class="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium"
+                :class="
+                  item.status === 'completed'
+                    ? 'bg-success/10 text-success'
+                    : 'bg-destructive/10 text-destructive'
+                "
+              >
+                <SIcon
+                  :icon="item.status === 'completed' ? 'lucide:check' : 'lucide:x'"
+                  class="text-[11px]"
+                />
+                {{ recordStatus(item.status) }}
               </span>
             </div>
-            <div
-              class="mt-1 flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground"
-            >
-              <SIcon icon="lucide:clock-3" class="shrink-0 text-xs" />
-              <span class="truncate">
-                {{ item.direction === 'receive' ? '接收自' : '发送至' }} {{ item.targetIp }}
+
+            <div class="mt-3 flex items-center gap-2 border-t border-border/60 pt-3">
+              <div
+                v-if="recordPathLabel(item)"
+                class="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-muted-foreground"
+                :title="
+                  isAndroid && item.direction === 'send'
+                    ? '源文件来自手机文件选择器'
+                    : item.filePath
+                "
+              >
+                <SIcon icon="lucide:folder" class="shrink-0 text-xs" />
+                <span class="truncate">{{ recordPathLabel(item) }}</span>
+              </div>
+              <span v-else class="min-w-0 flex-1 text-[11px] text-muted-foreground">
+                暂无本地文件路径
               </span>
+
+              <div class="flex shrink-0 items-center gap-1.5">
+                <SButton
+                  v-if="canOpenRecord(item)"
+                  variant="soft"
+                  color="primary"
+                  size="sm"
+                  class="h-8 px-2.5 text-[11px]"
+                  :disabled="openingRecordId === item.id"
+                  :title="isAndroid ? '交给 Android 文件应用打开' : '打开文件所在目录'"
+                  @click="openRecordLocation(item)"
+                >
+                  <SIcon
+                    :icon="
+                      openingRecordId === item.id ? 'lucide:loader-circle' : 'lucide:folder-open'
+                    "
+                    :class="openingRecordId === item.id ? 'animate-spin' : ''"
+                  />
+                  {{ isAndroid ? '打开文件' : '打开目录' }}
+                </SButton>
+                <span
+                  v-else-if="isAndroid && item.direction === 'receive' && item.filePath"
+                  class="text-[11px] text-muted-foreground"
+                  title="旧记录缺少 Android 文件 URI"
+                >
+                  已保存
+                </span>
+                <SButton
+                  variant="ghost"
+                  color="destructive"
+                  size="sm"
+                  shape="square"
+                  class="size-8"
+                  aria-label="删除传输记录"
+                  title="删除记录"
+                  @click="removeRecord(item)"
+                >
+                  <SIcon icon="lucide:trash-2" />
+                </SButton>
+              </div>
             </div>
+
             <div
-              v-if="item.direction === 'receive'"
-              class="mt-1 flex min-w-0 items-center gap-1 truncate text-[11px] text-success"
+              v-if="item.error"
+              class="mt-2 flex items-center gap-1 text-[11px] text-destructive"
             >
-              <SIcon icon="lucide:folder-check" class="shrink-0 text-xs" />
-              <span class="truncate">已保存至 {{ item.filePath || 'Download/FlashLAN' }}</span>
+              <SIcon icon="lucide:circle-alert" class="shrink-0 text-xs" />
+              <span class="truncate">{{ item.error }}</span>
             </div>
-          </div>
-          <div
-            class="mt-1 flex shrink-0 items-center gap-1.5 self-start text-xs font-semibold"
-            :class="item.status === 'completed' ? 'text-success' : 'text-destructive'"
-          >
-            <SIcon
-              :icon="item.status === 'completed' ? 'lucide:check' : 'lucide:x'"
-              class="text-sm"
-            />
-            <span>{{ recordStatus(item.status) }}</span>
-            <span
-              class="size-1.5 rounded-full"
-              :class="item.status === 'completed' ? 'bg-success' : 'bg-destructive'"
-            />
           </div>
         </div>
-      </div>
+      </article>
     </div>
 
     <div
       v-else
-      class="rounded-2xl border border-dashed border-border/80 dark:border-border/10 bg-card/60 p-10 text-center"
+      class="rounded-2xl border border-dashed border-border/80 bg-card/60 p-10 text-center dark:border-border/10"
     >
       <div
         class="mx-auto flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground"

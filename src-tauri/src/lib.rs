@@ -105,6 +105,15 @@ async fn send_file(
 }
 
 #[tauri::command]
+fn open_file_location(
+    app: tauri::AppHandle,
+    path: String,
+    file_name: String,
+) -> Result<(), String> {
+    transfer::open_file_location(&app, &path, &file_name)
+}
+
+#[tauri::command]
 fn respond_transfer_request(
     task_id: String,
     accepted: bool,
@@ -201,6 +210,7 @@ pub fn run() {
             discover_devices,
             test_connection,
             send_file,
+            open_file_location,
             respond_transfer_request,
             get_pending_transfer_requests,
             set_auto_receive

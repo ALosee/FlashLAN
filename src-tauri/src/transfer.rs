@@ -44,6 +44,8 @@ pub struct TransferResult {
     pub task_id: String,
     pub file_name: String,
     pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub open_path: Option<String>,
     pub success: bool,
     pub message: String,
     pub direction: String,
@@ -224,6 +226,20 @@ pub async fn start_file_server(app: AppHandle, manager: TransferManager) -> Resu
     Ok(())
 }
 
+pub fn open_file_location(app: &AppHandle, path: &str, file_name: &str) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        return open_android_file(app, path, file_name);
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, file_name);
+        tauri_plugin_opener::reveal_item_in_dir(path)
+            .map_err(|error| format!("打开文件目录失败：{error}"))
+    }
+}
+
 async fn handle_incoming(
     mut socket: TcpStream,
     save_dir: PathBuf,
@@ -268,6 +284,7 @@ async fn handle_incoming(
                 task_id: header.task_id,
                 file_name,
                 path: String::new(),
+                open_path: None,
                 success: false,
                 message,
                 direction: "receive".into(),
@@ -287,6 +304,7 @@ async fn handle_incoming(
                     task_id: header.task_id.clone(),
                     file_name: file_name.clone(),
                     path: String::new(),
+                    open_path: None,
                     success: false,
                     message: error.clone(),
                     direction: "receive".into(),
@@ -340,6 +358,7 @@ async fn handle_incoming(
                         task_id: header.task_id.clone(),
                         file_name: file_name.clone(),
                         path: String::new(),
+                        open_path: None,
                         success: false,
                         message: message.clone(),
                         direction: "receive".into(),
@@ -390,8 +409,8 @@ async fn handle_incoming(
         target.discard().await;
         return Err(error.to_string());
     }
-    let final_path = match target.finish().await {
-        Ok(path) => path,
+    let (final_path, open_path) = match target.finish().await {
+        Ok(paths) => paths,
         Err(error) => {
             let _ = app.emit(
                 "transfer_complete",
@@ -399,6 +418,7 @@ async fn handle_incoming(
                     task_id: header.task_id.clone(),
                     file_name: file_name.clone(),
                     path: String::new(),
+                    open_path: None,
                     success: false,
                     message: error.clone(),
                     direction: "receive".into(),
@@ -414,6 +434,7 @@ async fn handle_incoming(
             task_id: header.task_id.clone(),
             file_name,
             path: final_path,
+            open_path,
             success: true,
             message: "received".into(),
             direction: "receive".into(),
@@ -520,7 +541,7 @@ impl ReceiveTarget {
         })
     }
 
-    async fn finish(self) -> Result<String, String> {
+    async fn finish(self) -> Result<(String, Option<String>), String> {
         let ReceiveTarget {
             mut file,
             display_path,
@@ -529,6 +550,10 @@ impl ReceiveTarget {
             #[cfg(target_os = "android")]
             app,
         } = self;
+        #[cfg(target_os = "android")]
+        let open_path = media_uri.clone();
+        #[cfg(not(target_os = "android"))]
+        let open_path = None;
         file.flush().await.map_err(|error| error.to_string())?;
         file.sync_all().await.map_err(|error| error.to_string())?;
         drop(file);
@@ -540,7 +565,7 @@ impl ReceiveTarget {
                 return Err(error);
             }
         }
-        Ok(display_path)
+        Ok((display_path, open_path))
     }
 
     async fn discard(self) {
@@ -584,6 +609,129 @@ where
     receiver
         .recv()
         .map_err(|_| "Android JNI callback was cancelled".to_string())?
+}
+
+#[cfg(target_os = "android")]
+fn open_android_file(app: &AppHandle, path: &str, file_name: &str) -> Result<(), String> {
+    use jni::objects::JValue;
+
+    if !path.starts_with("content://") {
+        return Err("该文件没有可交给 Android 文件管理器的 URI".to_string());
+    }
+
+    let uri_string = path.to_string();
+    let file_name = file_name.to_string();
+    run_android_jni(app, move |env, activity| {
+        let uri_class = env
+            .find_class("android/net/Uri")
+            .map_err(|error| error.to_string())?;
+        let uri_text = env
+            .new_string(uri_string)
+            .map_err(|error| error.to_string())?;
+        let uri = env
+            .call_static_method(
+                uri_class,
+                "parse",
+                "(Ljava/lang/String;)Landroid/net/Uri;",
+                &[(&uri_text).into()],
+            )
+            .map_err(|error| error.to_string())?
+            .l()
+            .map_err(|error| error.to_string())?;
+        if uri.is_null() {
+            return Err("无法解析 Android 文件 URI".to_string());
+        }
+
+        let intent_class = env
+            .find_class("android/content/Intent")
+            .map_err(|error| error.to_string())?;
+        let action_view = env
+            .get_static_field(&intent_class, "ACTION_VIEW", "Ljava/lang/String;")
+            .map_err(|error| error.to_string())?
+            .l()
+            .map_err(|error| error.to_string())?;
+        let intent = env
+            .new_object(
+                &intent_class,
+                "(Ljava/lang/String;)V",
+                &[(&action_view).into()],
+            )
+            .map_err(|error| error.to_string())?;
+        let mime = env
+            .new_string(mime_type(&file_name))
+            .map_err(|error| error.to_string())?;
+        env.call_method(
+            &intent,
+            "setDataAndType",
+            "(Landroid/net/Uri;Ljava/lang/String;)Landroid/content/Intent;",
+            &[(&uri).into(), (&mime).into()],
+        )
+        .map_err(|error| error.to_string())?;
+        let read_permission = env
+            .get_static_field(&intent_class, "FLAG_GRANT_READ_URI_PERMISSION", "I")
+            .map_err(|error| error.to_string())?
+            .i()
+            .map_err(|error| error.to_string())?;
+        env.call_method(
+            &intent,
+            "addFlags",
+            "(I)Landroid/content/Intent;",
+            &[JValue::Int(read_permission)],
+        )
+        .map_err(|error| error.to_string())?;
+
+        let package_manager = env
+            .call_method(
+                activity,
+                "getPackageManager",
+                "()Landroid/content/pm/PackageManager;",
+                &[],
+            )
+            .map_err(|error| error.to_string())?
+            .l()
+            .map_err(|error| error.to_string())?;
+        let resolved = env
+            .call_method(
+                &intent,
+                "resolveActivity",
+                "(Landroid/content/pm/PackageManager;)Landroid/content/ComponentName;",
+                &[(&package_manager).into()],
+            )
+            .map_err(|error| error.to_string())?
+            .l()
+            .map_err(|error| error.to_string())?;
+        if resolved.is_null() {
+            let wildcard_mime = env.new_string("*/*").map_err(|error| error.to_string())?;
+            env.call_method(
+                &intent,
+                "setType",
+                "(Ljava/lang/String;)Landroid/content/Intent;",
+                &[(&wildcard_mime).into()],
+            )
+            .map_err(|error| error.to_string())?;
+            let wildcard_resolved = env
+                .call_method(
+                    &intent,
+                    "resolveActivity",
+                    "(Landroid/content/pm/PackageManager;)Landroid/content/ComponentName;",
+                    &[(&package_manager).into()],
+                )
+                .map_err(|error| error.to_string())?
+                .l()
+                .map_err(|error| error.to_string())?;
+            if wildcard_resolved.is_null() {
+                return Err(format!("手机上没有可以打开 {} 的应用", file_name));
+            }
+        }
+        env.call_method(
+            activity,
+            "startActivity",
+            "(Landroid/content/Intent;)V",
+            &[(&intent).into()],
+        )
+        .map_err(|error| error.to_string())?;
+        Ok(())
+    })
 }
 
 #[cfg(target_os = "android")]
@@ -1012,7 +1160,13 @@ fn mime_type(file_name: &str) -> &'static str {
         "mp3" => "audio/mpeg",
         "pdf" => "application/pdf",
         "zip" => "application/zip",
-        "txt" => "text/plain",
+        "txt" | "log" => "text/plain",
+        "md" | "markdown" => "text/markdown",
+        "json" => "application/json",
+        "csv" => "text/csv",
+        "html" | "htm" => "text/html",
+        "doc" => "application/msword",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         _ => "application/octet-stream",
     }
 }
@@ -1195,6 +1349,7 @@ pub async fn send_file(
             task_id: task_id.clone(),
             file_name,
             path: path.clone(),
+            open_path: Some(path.clone()),
             success: true,
             message: "sent".into(),
             direction: "send".into(),

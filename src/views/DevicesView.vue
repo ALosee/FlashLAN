@@ -71,11 +71,8 @@ onMounted(() => {
       <SCard
         v-for="d in deviceStore.devices"
         :key="d.id"
-        class="group relative overflow-hidden border-border/80 dark:border-border/10 bg-card/95 p-3! shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md"
+        class="group relative overflow-hidden border-border/80 dark:border-border/10 bg-card/95 p-3!"
       >
-        <div
-          class="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary/60 opacity-0 transition-opacity group-hover:opacity-100"
-        />
         <div class="flex items-center justify-between gap-4">
           <div class="flex min-w-0 items-center gap-3">
             <div

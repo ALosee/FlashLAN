@@ -243,7 +243,7 @@ onMounted(async () => {
 
     <!-- Keep incoming and outgoing transfers visible without requiring a page switch. -->
     <div
-      v-if="activeTasks.length"
+      v-if="activeTasks.length && route.path !== '/'"
       class="fixed right-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:right-5 md:bottom-5 z-40 w-[min(22rem,calc(100vw-1.5rem))]"
     >
       <button

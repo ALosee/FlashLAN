@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { open } from '@tauri-apps/plugin-dialog'
 import { SButton } from '@/ui/components/button'
 import { SCard } from '@/ui/components/card'
@@ -13,6 +14,7 @@ import { type TransferTask, useTransferStore } from '@/stores/transfer'
 
 const deviceStore = useDeviceStore()
 const transferStore = useTransferStore()
+const router = useRouter()
 
 const isDragging = ref(false)
 const selectedFiles = ref<string[]>([])
@@ -23,6 +25,19 @@ const isTestingConnection = ref(false)
 const connectionState = ref<'idle' | 'testing' | 'success' | 'error'>('idle')
 const connectionMessage = ref('')
 const testedEndpoint = ref('')
+
+const activeTasks = computed(() =>
+  transferStore.tasks.filter(task => task.status === 'transferring' || task.status === 'pending'),
+)
+const finishedTasks = computed(() =>
+  transferStore.tasks.filter(task => task.status === 'completed' || task.status === 'failed'),
+)
+const completedCount = computed(
+  () => finishedTasks.value.filter(task => task.status === 'completed').length,
+)
+const failedCount = computed(
+  () => finishedTasks.value.filter(task => task.status === 'failed').length,
+)
 
 const manualEndpoint = computed(() => `${manualIp.value.trim()}:${manualPort.value.trim()}`)
 const canAddManualDevice = computed(
@@ -236,6 +251,10 @@ function statusLabel(task: TransferTask) {
   if (task.status === 'failed') return '失败'
   if (task.direction === 'receive') return '接收中'
   return task.status === 'transferring' ? '发送中' : '等待中'
+}
+
+function openHistory() {
+  void router.push('/history')
 }
 
 onMounted(async () => {
@@ -501,149 +520,149 @@ onMounted(async () => {
       </template>
     </SDialog>
 
-    <!-- Transfers -->
-    <SCard
-      v-if="transferStore.tasks.length > 0"
-      class="overflow-hidden border-border/80 dark:border-border/10 shadow-sm"
+    <!-- Transfer activity -->
+    <section
+      v-if="activeTasks.length || finishedTasks.length"
+      class="relative overflow-hidden rounded-[1.4rem] border border-border/80 dark:border-border/10"
     >
-      <template #header>
-        <div class="flex w-full items-center justify-between gap-3">
-          <div class="flex min-w-0 items-center gap-3">
-            <div
-              class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
-            >
-              <SIcon icon="lucide:arrow-left-right" />
-            </div>
-            <div class="min-w-0">
-              <div class="text-sm font-semibold leading-5">传输任务</div>
-              <div class="mt-0.5 text-[11px] text-muted-foreground">文件收发进度</div>
-            </div>
-          </div>
-          <SBadge color="secondary" size="sm" class="shrink-0 rounded-full px-2.5">
-            {{ transferStore.tasks.length }} 个
-          </SBadge>
-        </div>
-      </template>
-      <div class="-mx-4 border-t border-border/70 dark:border-border/10 bg-muted/15 px-4 pb-2 pt-1">
-        <div class="divide-y divide-border/70 dark:divide-border/10">
+      <div
+        class="relative min-h-20 border-b border-border/70 bg-gradient-to-br from-primary/8 via-card to-card px-4 py-4 sm:px-5"
+      >
+        <div class="flex min-w-0 items-center gap-3 pr-24 sm:pr-36">
           <div
-            v-for="task in transferStore.tasks"
-            :key="task.id"
-            class="py-3.5 transition-colors first:pt-3 last:pb-2 hover:bg-card/60"
+            class="relative flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/10"
           >
-            <div class="grid grid-cols-[2.75rem_minmax(0,1fr)] items-start gap-3">
-              <div
-                class="flex size-11 shrink-0 items-center justify-center rounded-2xl"
-                :class="
-                  task.status === 'completed'
-                    ? 'bg-success/10 text-success'
-                    : task.status === 'failed'
-                      ? 'bg-destructive/10 text-destructive'
-                      : 'bg-primary/10 text-primary'
-                "
+            <span
+              v-if="activeTasks.length"
+              class="absolute inset-0 animate-ping rounded-2xl bg-primary/10"
+            />
+            <SIcon icon="lucide:arrow-left-right" class="relative text-lg" />
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <h2 class="text-sm font-semibold leading-5">传输任务</h2>
+              <span
+                v-if="activeTasks.length"
+                class="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary"
               >
-                <SIcon
-                  :icon="task.direction === 'receive' ? 'lucide:download' : 'lucide:file-up'"
-                  class="text-lg"
-                />
-              </div>
-              <div class="min-w-0">
-                <div class="flex min-w-0 items-center gap-2">
-                  <div class="min-w-0 flex-1 truncate text-sm font-semibold">
+                <span class="size-1.5 rounded-full bg-primary" />
+                {{ activeTasks.length }} 个进行中
+              </span>
+            </div>
+            <p class="mt-0.5 text-[11px] text-muted-foreground">
+              {{ activeTasks.length ? '实时同步文件收发状态' : '本次传输已全部处理完成' }}
+            </p>
+          </div>
+        </div>
+        <button
+          class="absolute right-4 top-1/2 flex -translate-y-1/2 shrink-0 items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-primary sm:right-5 sm:text-xs"
+          type="button"
+          @click="openHistory"
+        >
+          <span class="hidden sm:inline">查看传输记录</span>
+          <span class="sm:hidden">查看记录</span>
+          <SIcon icon="lucide:arrow-up-right" class="text-sm" />
+        </button>
+      </div>
+
+      <div v-if="activeTasks.length" class="relative space-y-2.5 bg-muted/15 p-3 sm:p-4">
+        <div
+          v-for="task in activeTasks"
+          :key="task.id"
+          class="group rounded-2xl border border-border/70 bg-card/90 p-3.5 transition-all hover:border-primary/25 hover:shadow-sm sm:p-4"
+        >
+          <div class="flex items-start gap-3">
+            <div
+              class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
+            >
+              <SIcon
+                :icon="task.direction === 'receive' ? 'lucide:download' : 'lucide:file-up'"
+                class="text-lg"
+              />
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="truncate text-sm font-semibold leading-5" :title="task.fileName">
                     {{ task.fileName }}
                   </div>
-                  <span
-                    class="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium"
-                    :class="
-                      task.status === 'completed'
-                        ? 'bg-success/10 text-success'
-                        : task.status === 'failed'
-                          ? 'bg-destructive/10 text-destructive'
-                          : 'bg-primary/10 text-primary'
-                    "
+                  <div
+                    class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground"
                   >
-                    <SIcon
-                      :icon="
-                        task.status === 'completed'
-                          ? 'lucide:check'
-                          : task.status === 'failed'
-                            ? 'lucide:circle-alert'
-                            : task.status === 'pending'
-                              ? 'lucide:clock-3'
-                              : 'lucide:arrow-up-right'
-                      "
-                      class="text-[11px]"
-                    />
-                    {{ statusLabel(task) }}
-                  </span>
-                </div>
-                <div
-                  class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
-                >
-                  <span>
-                    {{ task.direction === 'receive' ? '接收自' : '发送至' }} {{ task.targetIp }}
-                  </span>
-                  <span v-if="task.speed" class="text-border">·</span>
-                  <span v-if="task.speed">{{ formatSpeed(task.speed) }}</span>
-                </div>
-
-                <div class="mt-3 flex items-center gap-3">
-                  <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
-                    <div
-                      class="h-full rounded-full bg-primary transition-all"
-                      :class="
-                        task.status === 'completed'
-                          ? 'bg-success'
-                          : task.status === 'failed'
-                            ? 'bg-destructive'
-                            : ''
-                      "
-                      :style="{ width: `${task.progress}%` }"
-                    />
+                    <span>
+                      {{ task.direction === 'receive' ? '接收自' : '发送至' }} {{ task.targetIp }}
+                    </span>
+                    <span v-if="task.speed" class="text-border">·</span>
+                    <span v-if="task.speed">{{ formatSpeed(task.speed) }}</span>
                   </div>
-                  <span class="shrink-0 text-xs font-semibold tabular-nums">
-                    {{ task.progress.toFixed(0) }}%
-                  </span>
                 </div>
-                <div
-                  class="mt-1.5 flex items-center justify-between gap-3 text-[11px] text-muted-foreground"
+                <span
+                  class="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary"
                 >
-                  <span v-if="task.error" class="min-w-0 truncate text-destructive">
-                    {{ task.error }}
-                  </span>
-                  <span
-                    v-else-if="task.status === 'completed' && task.direction === 'receive'"
-                    class="flex min-w-0 items-center gap-1 truncate text-success"
-                  >
-                    <SIcon icon="lucide:folder-check" class="shrink-0 text-xs" />
-                    已保存至 {{ task.filePath || 'Download/FlashLAN' }}
-                  </span>
-                  <span v-else>
-                    {{ task.status === 'completed' ? '传输完成' : '正在处理文件' }}
-                  </span>
-                  <span class="shrink-0 tabular-nums">
-                    {{ formatBytes(task.transferred) }}
-                    <span v-if="task.total">/ {{ formatBytes(task.total) }}</span>
-                  </span>
+                  <SIcon
+                    :icon="task.status === 'pending' ? 'lucide:clock-3' : 'lucide:loader-circle'"
+                    class="text-[11px]"
+                    :class="task.status === 'transferring' ? 'animate-spin' : ''"
+                  />
+                  {{ statusLabel(task) }}
+                </span>
+              </div>
+
+              <div class="mt-3 flex items-center gap-3">
+                <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                  <div
+                    class="h-full rounded-full bg-gradient-to-r from-primary to-primary/60 transition-all duration-500"
+                    :style="{ width: `${task.progress}%` }"
+                  />
                 </div>
+                <span class="shrink-0 text-xs font-semibold tabular-nums text-foreground">
+                  {{ task.progress.toFixed(0) }}%
+                </span>
+              </div>
+              <div
+                class="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted-foreground"
+              >
+                <span v-if="task.error" class="min-w-0 truncate text-destructive">
+                  {{ task.error }}
+                </span>
+                <span v-else>{{ task.status === 'pending' ? '等待开始' : '正在传输文件' }}</span>
+                <span class="shrink-0 tabular-nums">
+                  {{ formatBytes(task.transferred) }}
+                  <span v-if="task.total">/ {{ formatBytes(task.total) }}</span>
+                </span>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </SCard>
-    <SCard v-else>
-      <template #header>
-        <div class="flex w-full items-center justify-between gap-3">
-          <span class="flex items-center gap-2 text-sm font-medium">
-            <SIcon icon="lucide:arrow-left-right" class="text-muted-foreground" />
-            传输任务
-          </span>
-          <SBadge color="secondary" size="sm">0</SBadge>
+
+      <div v-else class="relative flex items-center gap-3 bg-muted/15 px-4 py-4 sm:px-5">
+        <div
+          class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success"
+        >
+          <SIcon icon="lucide:check" />
         </div>
-      </template>
-      <div class="p-4 text-center text-sm text-muted-foreground">
-        暂无传输任务，选择文件发送，或等待其他设备发送到本机
+        <p class="min-w-0 flex-1 text-xs text-muted-foreground">
+          已完成 {{ completedCount }} 个传输任务
+          <span v-if="failedCount">，{{ failedCount }} 个任务失败</span>
+          ；完整文件记录已收纳至传输记录。
+        </p>
+        <button
+          class="hidden shrink-0 text-xs font-medium text-primary hover:underline sm:block"
+          type="button"
+          @click="openHistory"
+        >
+          去查看
+        </button>
+      </div>
+    </section>
+
+    <SCard v-else>
+      <div class="flex items-center gap-3 p-1 text-sm text-muted-foreground">
+        <div class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted">
+          <SIcon icon="lucide:arrow-left-right" />
+        </div>
+        <span>暂无进行中的任务，选择文件发送，或等待其他设备发送到本机</span>
       </div>
     </SCard>
   </div>

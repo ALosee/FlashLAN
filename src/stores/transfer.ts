@@ -8,6 +8,7 @@ export interface TransferTask {
   id: string
   fileName: string
   filePath?: string
+  fileOpenPath?: string
   size?: number
   progress: number
   speed: number
@@ -67,6 +68,7 @@ interface CompletePayload {
   task_id: string
   file_name: string
   path: string
+  open_path?: string
   success: boolean
   message: string
   direction?: 'send' | 'receive'
@@ -109,6 +111,16 @@ export const useTransferStore = defineStore('transfer', () => {
 
   function addTask(task: TransferTask) {
     tasks.value.unshift(task)
+  }
+
+  function removeTask(taskId: string) {
+    tasks.value = tasks.value.filter(task => task.id !== taskId)
+  }
+
+  function clearHistory() {
+    tasks.value = tasks.value.filter(
+      task => task.status === 'transferring' || task.status === 'pending',
+    )
   }
 
   function ensureTask(payload: {
@@ -243,6 +255,7 @@ export const useTransferStore = defineStore('transfer', () => {
         task.status = event.payload.success ? 'completed' : 'failed'
         task.progress = event.payload.success ? 100 : task.progress
         task.filePath = event.payload.path || task.filePath
+        task.fileOpenPath = event.payload.open_path || task.fileOpenPath
         task.error = event.payload.success ? undefined : event.payload.message
       })
     } catch {
@@ -258,6 +271,7 @@ export const useTransferStore = defineStore('transfer', () => {
         id: mockId,
         fileName,
         filePath,
+        fileOpenPath: filePath,
         progress: 0,
         speed: 0,
         transferred: 0,
@@ -289,6 +303,7 @@ export const useTransferStore = defineStore('transfer', () => {
       id: taskId,
       fileName,
       filePath,
+      fileOpenPath: filePath,
       progress: 0,
       speed: 0,
       transferred: 0,
@@ -323,6 +338,8 @@ export const useTransferStore = defineStore('transfer', () => {
     pendingRequests,
     autoReceiveEnabled,
     addTask,
+    removeTask,
+    clearHistory,
     updateProgress,
     ensureListener,
     initialize,
