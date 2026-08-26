@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    net::{IpAddr, SocketAddr},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -133,6 +134,7 @@ impl TransferManager {
 pub const TRANSFER_PORT: u16 = 17321;
 const CHUNK_SIZE: usize = 64 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+const CONNECTION_TEST_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Header sent before file bytes: JSON + newline
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,6 +142,25 @@ pub struct FileHeader {
     pub file_name: String,
     pub file_size: u64,
     pub task_id: String,
+}
+
+pub async fn test_connection(target_ip: String, target_port: u16) -> Result<(), String> {
+    if target_port == 0 {
+        return Err("端口号必须在 1 到 65535 之间".into());
+    }
+
+    let ip = target_ip
+        .trim()
+        .parse::<IpAddr>()
+        .map_err(|_| "IP 地址格式无效".to_string())?;
+    let addr = SocketAddr::new(ip, target_port);
+
+    tokio::time::timeout(CONNECTION_TEST_TIMEOUT, TcpStream::connect(addr))
+        .await
+        .map_err(|_| format!("连接 {}:{} 超时", ip, target_port))?
+        .map_err(|error| format!("无法连接 {}:{}：{}", ip, target_port, error))?;
+
+    Ok(())
 }
 
 pub async fn start_file_server(

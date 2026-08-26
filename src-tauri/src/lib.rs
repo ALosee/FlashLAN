@@ -23,6 +23,12 @@ async fn discover_devices() -> Vec<DeviceInfo> {
 }
 
 #[tauri::command]
+async fn test_connection(target_ip: String, target_port: Option<u16>) -> Result<(), String> {
+    let port = target_port.unwrap_or(discovery::SERVICE_PORT);
+    transfer::test_connection(target_ip, port).await
+}
+
+#[tauri::command]
 async fn send_file(
     app: tauri::AppHandle,
     path: String,
@@ -116,6 +122,7 @@ pub fn run() {
             greet,
             get_device_info,
             discover_devices,
+            test_connection,
             send_file,
             respond_transfer_request,
             get_pending_transfer_requests,

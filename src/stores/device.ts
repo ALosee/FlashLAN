@@ -12,11 +12,64 @@ export interface Device {
   online?: boolean
 }
 
+const MANUAL_DEVICES_STORAGE_KEY = 'flashlan.manual-devices'
+
+function endpointKey(ip: string, port: number) {
+  return `${ip}:${port}`
+}
+
+function loadManualDevices(): Device[] {
+  if (typeof window === 'undefined') return []
+
+  try {
+    const stored = JSON.parse(
+      window.localStorage.getItem(MANUAL_DEVICES_STORAGE_KEY) || '[]',
+    ) as unknown
+    if (!Array.isArray(stored)) return []
+
+    return stored.filter(
+      (device): device is Device =>
+        typeof device === 'object' &&
+        device !== null &&
+        typeof device.id === 'string' &&
+        typeof device.name === 'string' &&
+        typeof device.ip === 'string' &&
+        typeof device.platform === 'string' &&
+        typeof device.port === 'number',
+    )
+  } catch {
+    return []
+  }
+}
+
 export const useDeviceStore = defineStore('device', () => {
   const devices = ref<Device[]>([])
+  const discoveredDevices = ref<Device[]>([])
+  const manualDevices = ref<Device[]>(loadManualDevices())
   const isDiscovering = ref(false)
   const localDevice = ref<Device | null>(null)
   const error = ref<string | null>(null)
+
+  function rebuildDevices() {
+    const discoveredEndpoints = new Set(
+      discoveredDevices.value.map(device => endpointKey(device.ip, device.port)),
+    )
+    devices.value = [
+      ...discoveredDevices.value,
+      ...manualDevices.value.filter(
+        device => !discoveredEndpoints.has(endpointKey(device.ip, device.port)),
+      ),
+    ]
+  }
+
+  function persistManualDevices() {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(MANUAL_DEVICES_STORAGE_KEY, JSON.stringify(manualDevices.value))
+    } catch {
+      // Local storage may be unavailable in a restricted webview.
+    }
+  }
 
   async function fetchLocal() {
     if (!isTauri()) {
@@ -42,7 +95,7 @@ export const useDeviceStore = defineStore('device', () => {
     if (!isTauri()) {
       isDiscovering.value = true
       await new Promise(r => setTimeout(r, 600))
-      devices.value = [
+      discoveredDevices.value = [
         {
           id: 'mock-1',
           name: 'MacBook Air (Mock)',
@@ -60,6 +113,7 @@ export const useDeviceStore = defineStore('device', () => {
           online: true,
         },
       ]
+      rebuildDevices()
       isDiscovering.value = false
       return
     }
@@ -67,7 +121,8 @@ export const useDeviceStore = defineStore('device', () => {
     error.value = null
     try {
       const result = await invoke<Device[]>('discover_devices')
-      devices.value = result.map(d => ({ ...d, online: true }))
+      discoveredDevices.value = result.map(d => ({ ...d, online: true }))
+      rebuildDevices()
     } catch (e) {
       error.value = String(e)
     } finally {
@@ -75,5 +130,50 @@ export const useDeviceStore = defineStore('device', () => {
     }
   }
 
-  return { devices, isDiscovering, localDevice, error, fetchLocal, discover }
+  async function testConnection(targetIp: string, targetPort = 17321) {
+    if (!isTauri()) {
+      await new Promise(resolve => setTimeout(resolve, 450))
+      return
+    }
+
+    await invoke<void>('test_connection', {
+      targetIp: targetIp.trim(),
+      targetPort,
+    })
+  }
+
+  function addManualDevice(targetIp: string, targetPort = 17321) {
+    const ip = targetIp.trim()
+    const device: Device = {
+      id: `manual-${endpointKey(ip, targetPort)}`,
+      name: ip,
+      ip,
+      platform: 'manual',
+      port: targetPort,
+      online: true,
+    }
+    const existingIndex = manualDevices.value.findIndex(
+      item => endpointKey(item.ip, item.port) === endpointKey(ip, targetPort),
+    )
+
+    if (existingIndex === -1) {
+      manualDevices.value.push(device)
+    } else {
+      manualDevices.value[existingIndex] = device
+    }
+    persistManualDevices()
+    rebuildDevices()
+    return device
+  }
+
+  return {
+    devices,
+    isDiscovering,
+    localDevice,
+    error,
+    fetchLocal,
+    discover,
+    testConnection,
+    addManualDevice,
+  }
 })

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import { SButton } from '@/ui/components/button'
 import { SCard } from '@/ui/components/card'
+import { SDialog } from '@/ui/components/dialog'
 import { SIcon } from '@/ui/components/icon'
+import { SInput } from '@/ui/components/input'
 import { SBadge } from '@/ui/components/badge'
 import { SSeparator } from '@/ui/components/separator'
 import { isTauri } from '@/utils/tauri'
@@ -16,7 +18,109 @@ const transferStore = useTransferStore()
 const isDragging = ref(false)
 const selectedFiles = ref<string[]>([])
 const manualIp = ref('')
-const showManual = ref(false)
+const manualPort = ref('17321')
+const showAddDevice = ref(false)
+const isTestingConnection = ref(false)
+const connectionState = ref<'idle' | 'testing' | 'success' | 'error'>('idle')
+const connectionMessage = ref('')
+const testedEndpoint = ref('')
+
+const manualEndpoint = computed(() => `${manualIp.value.trim()}:${manualPort.value.trim()}`)
+const canAddManualDevice = computed(
+  () => connectionState.value === 'success' && testedEndpoint.value === manualEndpoint.value,
+)
+
+const ipv4Pattern = /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/
+
+function clearConnectionState() {
+  connectionState.value = 'idle'
+  connectionMessage.value = ''
+  testedEndpoint.value = ''
+}
+
+watch([manualIp, manualPort], clearConnectionState)
+
+function openAddDevice() {
+  manualIp.value = ''
+  manualPort.value = '17321'
+  clearConnectionState()
+  showAddDevice.value = true
+}
+
+function closeAddDevice() {
+  if (isTestingConnection.value) return
+  showAddDevice.value = false
+}
+
+function getManualDeviceInput() {
+  const ip = manualIp.value.trim()
+  const port = Number(manualPort.value)
+
+  if (!ip) {
+    connectionState.value = 'error'
+    connectionMessage.value = '请输入设备 IP 地址'
+    return null
+  }
+  if (!ipv4Pattern.test(ip)) {
+    connectionState.value = 'error'
+    connectionMessage.value = '请输入有效的 IPv4 地址'
+    return null
+  }
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    connectionState.value = 'error'
+    connectionMessage.value = '端口号必须在 1 到 65535 之间'
+    return null
+  }
+
+  return { ip, port }
+}
+
+function getErrorMessage(error: unknown) {
+  const message = String(error)
+    .replace(/^Error:\s*/, '')
+    .trim()
+  return message || '连接失败，请确认设备地址和端口正确'
+}
+
+async function testManualConnection() {
+  const input = getManualDeviceInput()
+  if (!input) return
+
+  const endpoint = `${input.ip}:${input.port}`
+  isTestingConnection.value = true
+  connectionState.value = 'testing'
+  connectionMessage.value = `正在测试 ${endpoint}...`
+
+  try {
+    await deviceStore.testConnection(input.ip, input.port)
+    if (manualEndpoint.value !== endpoint) {
+      connectionState.value = 'idle'
+      connectionMessage.value = '地址已变化，请重新测试连接'
+      return
+    }
+    connectionState.value = 'success'
+    testedEndpoint.value = endpoint
+    connectionMessage.value = `连接成功，可以添加设备`
+  } catch (error) {
+    connectionState.value = 'error'
+    connectionMessage.value = getErrorMessage(error)
+  } finally {
+    isTestingConnection.value = false
+  }
+}
+
+async function addManualDevice() {
+  const input = getManualDeviceInput()
+  if (!input) return
+
+  if (!canAddManualDevice.value) {
+    await testManualConnection()
+  }
+  if (!canAddManualDevice.value) return
+
+  deviceStore.addManualDevice(input.ip, input.port)
+  showAddDevice.value = false
+}
 
 function onDragOver(e: DragEvent) {
   e.preventDefault()
@@ -226,18 +330,24 @@ onMounted(async () => {
             {{ deviceStore.error }}
           </span>
         </h2>
-        <SButton
-          variant="ghost"
-          size="sm"
-          :disabled="deviceStore.isDiscovering"
-          @click="deviceStore.discover()"
-        >
-          <SIcon
-            icon="lucide:refresh-cw"
-            :class="deviceStore.isDiscovering ? 'animate-spin' : ''"
-          />
-          刷新
-        </SButton>
+        <div class="flex items-center gap-1">
+          <SButton
+            variant="ghost"
+            size="sm"
+            :disabled="deviceStore.isDiscovering"
+            @click="deviceStore.discover()"
+          >
+            <SIcon
+              icon="lucide:refresh-cw"
+              :class="deviceStore.isDiscovering ? 'animate-spin' : ''"
+            />
+            刷新
+          </SButton>
+          <SButton size="sm" @click="openAddDevice">
+            <SIcon icon="lucide:plus" />
+            添加设备
+          </SButton>
+        </div>
       </div>
 
       <div
@@ -280,30 +390,90 @@ onMounted(async () => {
             </SButton>
           </div>
         </SCard>
-
-        <!-- Add manual IP -->
-        <SCard
-          class="border-dashed! bg-muted/20 hover:bg-card hover:border-border transition-colors min-h-[168px] flex flex-col items-center justify-center text-center cursor-pointer p-4!"
-          @click="showManual = !showManual"
-        >
-          <div
-            class="size-8 rounded-full border flex items-center justify-center text-muted-foreground"
-          >
-            <SIcon icon="lucide:plus" />
-          </div>
-          <div class="text-sm font-medium mt-2">手动添加设备</div>
-          <div class="text-xs text-muted-foreground">输入 IP 地址</div>
-          <div v-if="showManual" class="mt-3 w-full flex gap-2" @click.stop>
-            <input
-              v-model="manualIp"
-              placeholder="192.168.1.100"
-              class="flex-1 border rounded px-2 py-1 text-xs bg-background"
-            />
-            <SButton size="sm" @click="handleSend(manualIp)">连接</SButton>
-          </div>
-        </SCard>
       </div>
     </div>
+
+    <SDialog
+      v-model:open="showAddDevice"
+      title="添加设备"
+      description="输入设备地址并测试连接，确认可用后再添加。"
+      size="sm"
+      :show-fullscreen="false"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
+      <form class="space-y-4" @submit.prevent="testManualConnection">
+        <div class="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
+          <div class="space-y-1.5">
+            <label for="manual-device-ip" class="text-sm font-medium">IP 地址</label>
+            <SInput
+              id="manual-device-ip"
+              v-model="manualIp"
+              autofocus
+              placeholder="192.168.1.100"
+              autocomplete="off"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <label for="manual-device-port" class="text-sm font-medium">端口</label>
+            <SInput
+              id="manual-device-port"
+              v-model="manualPort"
+              type="number"
+              min="1"
+              max="65535"
+              inputmode="numeric"
+              placeholder="17321"
+            />
+          </div>
+        </div>
+
+        <p class="text-xs text-muted-foreground">
+          默认端口为 17321，请确认目标设备已启动 FlashLAN。
+        </p>
+
+        <div
+          v-if="connectionState !== 'idle'"
+          class="flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
+          :class="
+            connectionState === 'success'
+              ? 'bg-success/10 text-success'
+              : connectionState === 'error'
+                ? 'bg-destructive/10 text-destructive'
+                : 'bg-muted text-muted-foreground'
+          "
+          role="status"
+        >
+          <SIcon
+            :icon="
+              connectionState === 'success'
+                ? 'lucide:circle-check'
+                : connectionState === 'error'
+                  ? 'lucide:circle-alert'
+                  : 'lucide:loader-circle'
+            "
+            :class="connectionState === 'testing' ? 'animate-spin' : ''"
+            class="text-sm shrink-0 mt-0.5"
+          />
+          <span>{{ connectionMessage }}</span>
+        </div>
+
+        <SButton type="submit" variant="outline" class="w-full" :disabled="isTestingConnection">
+          <SIcon icon="lucide:plug" :class="isTestingConnection ? 'animate-pulse' : ''" />
+          {{ isTestingConnection ? '测试连接中...' : '测试连接' }}
+        </SButton>
+      </form>
+
+      <template #footer>
+        <SButton variant="ghost" :disabled="isTestingConnection" @click="closeAddDevice">
+          取消
+        </SButton>
+        <SButton :disabled="!canAddManualDevice || isTestingConnection" @click="addManualDevice">
+          <SIcon icon="lucide:plus" />
+          添加设备
+        </SButton>
+      </template>
+    </SDialog>
 
     <SSeparator />
 
