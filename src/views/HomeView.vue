@@ -369,11 +369,8 @@ onMounted(async () => {
         <SCard
           v-for="device in deviceStore.devices"
           :key="device.id"
-          class="group relative overflow-hidden border-border/80 dark:border-border/10 bg-card/95 p-3! shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md"
+          class="group relative overflow-hidden border-border/80 dark:border-border/10 bg-card/95 p-3! transition-all"
         >
-          <div
-            class="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary/60 opacity-0 transition-opacity group-hover:opacity-100"
-          />
           <div class="flex items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">
               <div
@@ -412,12 +409,8 @@ onMounted(async () => {
             <span class="text-[11px] text-muted-foreground">可发送文件</span>
           </div>
 
-          <div class="mt-3 border-t border-border/70 dark:border-border/10 pt-3">
-            <SButton
-              size="sm"
-              class="h-9 w-full shadow-sm transition-shadow group-hover:shadow-md"
-              @click="handleSend(device.ip, device.port)"
-            >
+          <div class="mt-3">
+            <SButton size="sm" class="h-9 w-full" @click="handleSend(device.ip, device.port)">
               <SIcon icon="lucide:send" />
               发送文件
             </SButton>
