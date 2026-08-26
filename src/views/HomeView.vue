@@ -7,7 +7,6 @@ import { SDialog } from '@/ui/components/dialog'
 import { SIcon } from '@/ui/components/icon'
 import { SInput } from '@/ui/components/input'
 import { SBadge } from '@/ui/components/badge'
-import { SSeparator } from '@/ui/components/separator'
 import { isTauri } from '@/utils/tauri'
 import { useDeviceStore } from '@/stores/device'
 import { type TransferTask, useTransferStore } from '@/stores/transfer'
@@ -223,6 +222,15 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
 }
 
+function platformLabel(platform: string) {
+  if (platform === 'macos') return 'macOS'
+  if (platform === 'windows') return 'Windows'
+  if (platform === 'android') return 'Android'
+  if (platform === 'ios') return 'iPhone / iPad'
+  if (platform === 'manual') return '手动添加'
+  return platform
+}
+
 function statusLabel(task: TransferTask) {
   if (task.status === 'completed') return '已完成'
   if (task.status === 'failed') return '失败'
@@ -361,32 +369,57 @@ onMounted(async () => {
         <SCard
           v-for="device in deviceStore.devices"
           :key="device.id"
-          class="hover:border-primary/30 hover:shadow-sm cursor-pointer transition-all group p-4!"
+          class="group relative overflow-hidden border-border/80 dark:border-border/10 bg-card/95 p-3! shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md"
         >
-          <div class="flex items-start justify-between">
-            <div class="size-10 rounded-xl bg-muted flex items-center justify-center">
-              <SIcon
-                :icon="
-                  device.platform === 'windows'
-                    ? 'lucide:monitor'
-                    : device.platform === 'macos'
-                      ? 'lucide:laptop'
-                      : 'lucide:smartphone'
-                "
-                class="text-lg"
-              />
+          <div
+            class="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary/60 opacity-0 transition-opacity group-hover:opacity-100"
+          />
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex min-w-0 items-center gap-3">
+              <div
+                class="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 via-primary/8 to-muted text-primary ring-1 ring-primary/10"
+              >
+                <SIcon
+                  :icon="
+                    device.platform === 'windows'
+                      ? 'lucide:monitor'
+                      : device.platform === 'macos'
+                        ? 'lucide:laptop'
+                        : 'lucide:smartphone'
+                  "
+                  class="text-lg"
+                />
+              </div>
+              <div class="min-w-0">
+                <div class="truncate text-sm font-semibold leading-5">{{ device.name }}</div>
+                <div class="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+                  {{ device.ip }}:{{ device.port }}
+                </div>
+              </div>
             </div>
-            <div class="size-2 rounded-full bg-success mt-1 shrink-0" />
+            <span
+              class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-success/10 px-2 py-1 text-[10px] font-medium text-success"
+            >
+              <span class="size-1.5 rounded-full bg-success" />
+              在线
+            </span>
           </div>
-          <div class="mt-3 font-medium text-sm truncate">{{ device.name }}</div>
-          <div class="text-xs text-muted-foreground font-mono truncate">
-            {{ device.ip }}:{{ device.port }}
+
+          <div class="mt-3 flex items-center justify-between gap-3">
+            <span class="rounded-md bg-muted/70 px-2 py-1 text-[11px] text-muted-foreground">
+              {{ platformLabel(device.platform) }}
+            </span>
+            <span class="text-[11px] text-muted-foreground">可发送文件</span>
           </div>
-          <div class="text-xs text-muted-foreground truncate">{{ device.platform }}</div>
-          <div class="mt-3">
-            <SButton size="sm" class="w-full" @click="handleSend(device.ip, device.port)">
+
+          <div class="mt-3 border-t border-border/70 dark:border-border/10 pt-3">
+            <SButton
+              size="sm"
+              class="h-9 w-full shadow-sm transition-shadow group-hover:shadow-md"
+              @click="handleSend(device.ip, device.port)"
+            >
               <SIcon icon="lucide:send" />
-              发送
+              发送文件
             </SButton>
           </div>
         </SCard>
@@ -475,75 +508,132 @@ onMounted(async () => {
       </template>
     </SDialog>
 
-    <SSeparator />
-
     <!-- Transfers -->
-    <SCard v-if="transferStore.tasks.length > 0">
+    <SCard
+      v-if="transferStore.tasks.length > 0"
+      class="overflow-hidden border-border/80 dark:border-border/10 shadow-sm"
+    >
       <template #header>
-        <div class="flex items-center justify-between w-full">
-          <span class="font-medium text-sm flex items-center gap-2">
-            <SIcon icon="lucide:arrow-left-right" class="text-muted-foreground" />
-            传输任务
-          </span>
-          <SBadge color="secondary" size="sm">{{ transferStore.tasks.length }}</SBadge>
+        <div class="flex w-full items-center justify-between gap-3">
+          <div class="flex min-w-0 items-center gap-3">
+            <div
+              class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
+            >
+              <SIcon icon="lucide:arrow-left-right" />
+            </div>
+            <div class="min-w-0">
+              <div class="text-sm font-semibold leading-5">传输任务</div>
+              <div class="mt-0.5 text-[11px] text-muted-foreground">文件收发进度</div>
+            </div>
+          </div>
+          <SBadge color="secondary" size="sm" class="shrink-0 rounded-full px-2.5">
+            {{ transferStore.tasks.length }} 个
+          </SBadge>
         </div>
       </template>
-      <div class="space-y-3">
-        <div
-          v-for="task in transferStore.tasks"
-          :key="task.id"
-          class="flex items-center gap-4 p-3 rounded-lg border bg-card"
-        >
-          <div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-            <SIcon
-              :icon="task.direction === 'receive' ? 'lucide:download' : 'lucide:file-up'"
-              class="text-primary"
-            />
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium truncate flex items-center gap-2">
-              {{ task.fileName }}
-              <SBadge
-                :color="
-                  task.status === 'completed'
-                    ? 'success'
-                    : task.status === 'failed'
-                      ? 'destructive'
-                      : 'secondary'
-                "
-                size="sm"
-              >
-                {{ statusLabel(task) }}
-              </SBadge>
-            </div>
-            <div class="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
-              <span>
-                {{ task.direction === 'receive' ? '接收自' : '发送至' }} {{ task.targetIp }}
-              </span>
-              <span v-if="task.speed">· {{ formatSpeed(task.speed) }}</span>
-            </div>
-            <div v-if="task.error" class="text-xs text-destructive mt-1 truncate">
-              {{ task.error }}
-            </div>
-            <div
-              v-else-if="task.status === 'completed' && task.direction === 'receive'"
-              class="text-xs text-success mt-1 truncate"
-            >
-              <SIcon icon="lucide:folder-check" class="inline-block text-xs mr-1" />
-              已保存至 {{ task.filePath || 'Download/FlashLAN' }}
-            </div>
-            <div class="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
+      <div class="-mx-4 border-t border-border/70 dark:border-border/10 bg-muted/15 px-4 pb-2 pt-1">
+        <div class="divide-y divide-border/70 dark:divide-border/10">
+          <div
+            v-for="task in transferStore.tasks"
+            :key="task.id"
+            class="py-3.5 transition-colors first:pt-3 last:pb-2 hover:bg-card/60"
+          >
+            <div class="grid grid-cols-[2.75rem_minmax(0,1fr)] items-start gap-3">
               <div
-                class="h-full bg-primary rounded-full transition-all"
-                :style="{ width: `${task.progress}%` }"
-              ></div>
-            </div>
-          </div>
-          <div class="text-right shrink-0">
-            <div class="text-sm font-medium">{{ task.progress.toFixed(0) }}%</div>
-            <div class="text-xs text-muted-foreground">
-              {{ formatBytes(task.transferred) }}
-              <span v-if="task.total">/ {{ formatBytes(task.total) }}</span>
+                class="flex size-11 shrink-0 items-center justify-center rounded-2xl"
+                :class="
+                  task.status === 'completed'
+                    ? 'bg-success/10 text-success'
+                    : task.status === 'failed'
+                      ? 'bg-destructive/10 text-destructive'
+                      : 'bg-primary/10 text-primary'
+                "
+              >
+                <SIcon
+                  :icon="task.direction === 'receive' ? 'lucide:download' : 'lucide:file-up'"
+                  class="text-lg"
+                />
+              </div>
+              <div class="min-w-0">
+                <div class="flex min-w-0 items-center gap-2">
+                  <div class="min-w-0 flex-1 truncate text-sm font-semibold">
+                    {{ task.fileName }}
+                  </div>
+                  <span
+                    class="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium"
+                    :class="
+                      task.status === 'completed'
+                        ? 'bg-success/10 text-success'
+                        : task.status === 'failed'
+                          ? 'bg-destructive/10 text-destructive'
+                          : 'bg-primary/10 text-primary'
+                    "
+                  >
+                    <SIcon
+                      :icon="
+                        task.status === 'completed'
+                          ? 'lucide:check'
+                          : task.status === 'failed'
+                            ? 'lucide:circle-alert'
+                            : task.status === 'pending'
+                              ? 'lucide:clock-3'
+                              : 'lucide:arrow-up-right'
+                      "
+                      class="text-[11px]"
+                    />
+                    {{ statusLabel(task) }}
+                  </span>
+                </div>
+                <div
+                  class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+                >
+                  <span>
+                    {{ task.direction === 'receive' ? '接收自' : '发送至' }} {{ task.targetIp }}
+                  </span>
+                  <span v-if="task.speed" class="text-border">·</span>
+                  <span v-if="task.speed">{{ formatSpeed(task.speed) }}</span>
+                </div>
+
+                <div class="mt-3 flex items-center gap-3">
+                  <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                    <div
+                      class="h-full rounded-full bg-primary transition-all"
+                      :class="
+                        task.status === 'completed'
+                          ? 'bg-success'
+                          : task.status === 'failed'
+                            ? 'bg-destructive'
+                            : ''
+                      "
+                      :style="{ width: `${task.progress}%` }"
+                    />
+                  </div>
+                  <span class="shrink-0 text-xs font-semibold tabular-nums">
+                    {{ task.progress.toFixed(0) }}%
+                  </span>
+                </div>
+                <div
+                  class="mt-1.5 flex items-center justify-between gap-3 text-[11px] text-muted-foreground"
+                >
+                  <span v-if="task.error" class="min-w-0 truncate text-destructive">
+                    {{ task.error }}
+                  </span>
+                  <span
+                    v-else-if="task.status === 'completed' && task.direction === 'receive'"
+                    class="flex min-w-0 items-center gap-1 truncate text-success"
+                  >
+                    <SIcon icon="lucide:folder-check" class="shrink-0 text-xs" />
+                    已保存至 {{ task.filePath || 'Download/FlashLAN' }}
+                  </span>
+                  <span v-else>
+                    {{ task.status === 'completed' ? '传输完成' : '正在处理文件' }}
+                  </span>
+                  <span class="shrink-0 tabular-nums">
+                    {{ formatBytes(task.transferred) }}
+                    <span v-if="task.total">/ {{ formatBytes(task.total) }}</span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -551,10 +641,10 @@ onMounted(async () => {
     </SCard>
     <SCard v-else>
       <template #header>
-        <div class="flex items-center justify-between w-full">
-          <span class="font-medium text-sm flex items-center gap-2">
+        <div class="flex w-full items-center justify-between gap-3">
+          <span class="flex items-center gap-2 text-sm font-medium">
             <SIcon icon="lucide:arrow-left-right" class="text-muted-foreground" />
-            正在传输
+            传输任务
           </span>
           <SBadge color="secondary" size="sm">0</SBadge>
         </div>

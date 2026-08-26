@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
+import { useTheme } from '@soybeanjs/ui'
+import type { ThemeModePreference } from '@soybeanjs/theme'
 import { SCard } from '@/ui/components/card'
 import { SButton } from '@/ui/components/button'
 import { SInput } from '@/ui/components/input'
@@ -21,6 +23,19 @@ const isSavingName = ref(false)
 const isChoosingPath = ref(false)
 const settingsMessage = ref('')
 const settingsError = ref('')
+const theme = useTheme()
+const themeMode = computed<ThemeModePreference>(() => theme?.mode.value ?? 'light')
+
+const themeModeOptions: Array<{
+  value: ThemeModePreference
+  label: string
+  description: string
+  icon: string
+}> = [
+  { value: 'light', label: '白天模式', description: '始终使用浅色外观', icon: 'lucide:sun' },
+  { value: 'dark', label: '黑夜模式', description: '始终使用深色外观', icon: 'lucide:moon' },
+  { value: 'auto', label: '跟随系统', description: '根据系统外观自动切换', icon: 'lucide:monitor' },
+]
 
 interface SettingsPayload {
   device_name: string
@@ -47,6 +62,10 @@ const displayedSavePath = computed(() => {
 function clearFeedback() {
   settingsMessage.value = ''
   settingsError.value = ''
+}
+
+function selectThemeMode(mode: ThemeModePreference) {
+  theme?.setMode(mode)
 }
 
 function loadBrowserSettings(): SettingsPayload {
@@ -221,6 +240,46 @@ onMounted(loadSettings)
             </div>
           </div>
           <SSwitch v-model="autoReceive" />
+        </div>
+
+        <div class="py-3 md:py-4 flex flex-col gap-3">
+          <div class="flex items-center gap-3">
+            <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+              <SIcon icon="lucide:palette" />
+            </div>
+            <div>
+              <div class="text-sm font-medium">主题模式</div>
+              <div class="text-xs text-muted-foreground">选择应用的外观显示方式</div>
+            </div>
+          </div>
+          <div
+            class="grid grid-cols-1 sm:grid-cols-3 gap-2 pl-0 sm:pl-12"
+            role="radiogroup"
+            aria-label="主题模式"
+          >
+            <button
+              v-for="option in themeModeOptions"
+              :key="option.value"
+              type="button"
+              role="radio"
+              :aria-checked="themeMode === option.value"
+              class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors"
+              :class="
+                themeMode === option.value
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-background hover:bg-muted'
+              "
+              @click="selectThemeMode(option.value)"
+            >
+              <SIcon :icon="option.icon" class="text-base shrink-0" />
+              <span class="min-w-0">
+                <span class="block text-sm font-medium">{{ option.label }}</span>
+                <span class="block text-xs text-muted-foreground truncate">
+                  {{ option.description }}
+                </span>
+              </span>
+            </button>
+          </div>
         </div>
 
         <div class="py-3 md:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
