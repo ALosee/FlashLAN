@@ -1,6 +1,6 @@
 {
   "name": "flash-lan",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "局域网快传 - FlashLAN",
   "type": "module",
@@ -8,6 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "build:android": "tauri android build --apk",
     "build:macos": "tauri build --bundles dmg",
+    "build:windows": "tauri build --bundles nsis,msi",
     "check": "pnpm typecheck && pnpm lint:check && pnpm fmt:check",
     "dev": "vite",
     "fmt": "oxfmt",

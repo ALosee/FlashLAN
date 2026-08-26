@@ -48,11 +48,48 @@ jobs:
           tagName: v__VERSION__
           releaseName: FlashLAN v__VERSION__
           releaseBody: |
-            FlashLAN desktop and Android builds.
+            FlashLAN desktop (macOS and Windows) and Android builds.
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }} --bundles dmg
           releaseAssetNamePattern: FlashLAN-[platform]-[arch][ext]
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: FlashLAN v__VERSION__
+          releaseBody: |
+            FlashLAN desktop, Windows, and Android builds.
+          releaseDraft: true
+          prerelease: false
+          args: --target x86_64-pc-windows-msvc --bundles nsis,msi
+          releaseAssetNamePattern: FlashLAN-windows-[arch][ext]
 
   android:
     runs-on: ubuntu-24.04

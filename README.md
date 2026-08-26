@@ -2,7 +2,7 @@
 
 局域网快传桌面应用。基于 Tauri 2、Vue 3 和 Rust，在同一局域网内发现设备并通过 TCP 传输文件。
 
-> 当前版本：`0.1.0` · Beta
+> 当前版本：`0.1.1` · Beta
 
 ## 功能
 
@@ -78,20 +78,21 @@ pnpm tauri dev
 
 ## 常用命令
 
-| 命令                 | 说明                           |
-| -------------------- | ------------------------------ |
-| `pnpm dev`           | 启动 Vite 浏览器预览           |
-| `pnpm tauri dev`     | 启动 Tauri 桌面开发环境        |
-| `pnpm build`         | 类型检查并构建前端             |
-| `pnpm tauri build`   | 构建当前平台的 Tauri 安装包    |
-| `pnpm build:macos`   | 构建 macOS DMG                 |
-| `pnpm build:android` | 构建 Android APK               |
-| `pnpm preview`       | 预览已构建的前端产物           |
-| `pnpm check`         | 执行类型检查、Lint 和格式检查  |
-| `pnpm typecheck`     | 仅执行 TypeScript/Vue 类型检查 |
-| `pnpm lint:check`    | 仅执行 Lint 检查               |
-| `pnpm fmt:check`     | 仅执行格式检查                 |
-| `pnpm fmt`           | 格式化项目文件                 |
+| 命令                 | 说明                            |
+| -------------------- | ------------------------------- |
+| `pnpm dev`           | 启动 Vite 浏览器预览            |
+| `pnpm tauri dev`     | 启动 Tauri 桌面开发环境         |
+| `pnpm build`         | 类型检查并构建前端              |
+| `pnpm tauri build`   | 构建当前平台的 Tauri 安装包     |
+| `pnpm build:macos`   | 构建 macOS DMG                  |
+| `pnpm build:windows` | 构建 Windows NSIS 和 MSI 安装包 |
+| `pnpm build:android` | 构建 Android APK                |
+| `pnpm preview`       | 预览已构建的前端产物            |
+| `pnpm check`         | 执行类型检查、Lint 和格式检查   |
+| `pnpm typecheck`     | 仅执行 TypeScript/Vue 类型检查  |
+| `pnpm lint:check`    | 仅执行 Lint 检查                |
+| `pnpm fmt:check`     | 仅执行格式检查                  |
+| `pnpm fmt`           | 格式化项目文件                  |
 
 ## 传输实现
 

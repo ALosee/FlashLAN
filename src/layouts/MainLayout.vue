@@ -64,11 +64,12 @@ onMounted(async () => {
       class="flex md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between px-4 border-b bg-card pt-[env(safe-area-inset-top)]"
     >
       <div class="flex items-center gap-2">
-        <div
-          class="size-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground"
-        >
-          <SIcon icon="lucide:zap" class="text-base" />
-        </div>
+        <img
+          src="/flashlan-icon.svg"
+          alt=""
+          aria-hidden="true"
+          class="size-8 rounded-lg shrink-0"
+        />
         <span class="font-bold text-base">FlashLAN</span>
         <SBadge color="secondary" size="sm" class="text-xs">Beta</SBadge>
       </div>
@@ -90,11 +91,12 @@ onMounted(async () => {
         @click.stop
       >
         <div class="flex items-center gap-3 px-2 py-3">
-          <div
-            class="size-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground"
-          >
-            <SIcon icon="lucide:zap" />
-          </div>
+          <img
+            src="/flashlan-icon.svg"
+            alt=""
+            aria-hidden="true"
+            class="size-8 rounded-lg shrink-0"
+          />
           <span class="font-bold">FlashLAN</span>
         </div>
         <SSeparator class="my-2" />
@@ -137,11 +139,12 @@ onMounted(async () => {
     <!-- Desktop sidebar -->
     <aside class="hidden md:flex w-60 shrink-0 border-r bg-card flex-col">
       <div class="h-14 flex items-center gap-3 px-5 shrink-0">
-        <div
-          class="size-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shrink-0"
-        >
-          <SIcon icon="lucide:zap" class="text-base" />
-        </div>
+        <img
+          src="/flashlan-icon.svg"
+          alt=""
+          aria-hidden="true"
+          class="size-8 rounded-lg shrink-0"
+        />
         <span class="font-bold text-base tracking-tight">FlashLAN</span>
         <SBadge color="secondary" size="sm" class="ml-1 text-xs">Beta</SBadge>
       </div>
