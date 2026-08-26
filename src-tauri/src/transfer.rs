@@ -826,6 +826,177 @@ fn delete_media_store_file(app: &AppHandle, uri_string: String) -> Result<(), St
 }
 
 #[cfg(target_os = "android")]
+struct AndroidSourceFile {
+    file: std::fs::File,
+    file_name: String,
+    file_size: u64,
+}
+
+#[cfg(target_os = "android")]
+fn open_android_content_uri(
+    app: &AppHandle,
+    uri_string: &str,
+) -> Result<AndroidSourceFile, String> {
+    use jni::objects::{JObject, JString};
+    use std::os::fd::FromRawFd;
+
+    let uri_string = uri_string.to_string();
+    run_android_jni(app, move |env, activity| {
+        let uri_class = env
+            .find_class("android/net/Uri")
+            .map_err(|error| error.to_string())?;
+        let uri_text = env
+            .new_string(&uri_string)
+            .map_err(|error| error.to_string())?;
+        let uri = env
+            .call_static_method(
+                uri_class,
+                "parse",
+                "(Ljava/lang/String;)Landroid/net/Uri;",
+                &[(&uri_text).into()],
+            )
+            .map_err(|error| error.to_string())?
+            .l()
+            .map_err(|error| error.to_string())?;
+        if uri.is_null() {
+            return Err(format!("无法解析文件 URI：{uri_string}"));
+        }
+
+        let resolver = env
+            .call_method(
+                activity,
+                "getContentResolver",
+                "()Landroid/content/ContentResolver;",
+                &[],
+            )
+            .map_err(|error| error.to_string())?
+            .l()
+            .map_err(|error| error.to_string())?;
+
+        let cursor = env
+            .call_method(
+                &resolver,
+                "query",
+                "(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;",
+                &[
+                    (&uri).into(),
+                    (&JObject::null()).into(),
+                    (&JObject::null()).into(),
+                    (&JObject::null()).into(),
+                    (&JObject::null()).into(),
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            .l()
+            .map_err(|error| error.to_string())?;
+
+        let mut display_name = None;
+        let mut queried_size = None;
+        if !cursor.is_null() {
+            let has_row = env
+                .call_method(&cursor, "moveToFirst", "()Z", &[])
+                .map_err(|error| error.to_string())?
+                .z()
+                .map_err(|error| error.to_string())?;
+            if has_row {
+                let display_name_key = env
+                    .new_string("_display_name")
+                    .map_err(|error| error.to_string())?;
+                let name_column = env
+                    .call_method(
+                        &cursor,
+                        "getColumnIndex",
+                        "(Ljava/lang/String;)I",
+                        &[(&display_name_key).into()],
+                    )
+                    .map_err(|error| error.to_string())?
+                    .i()
+                    .map_err(|error| error.to_string())?;
+                if name_column >= 0 {
+                    let value = env
+                        .call_method(
+                            &cursor,
+                            "getString",
+                            "(I)Ljava/lang/String;",
+                            &[name_column.into()],
+                        )
+                        .map_err(|error| error.to_string())?
+                        .l()
+                        .map_err(|error| error.to_string())?;
+                    if !value.is_null() {
+                        display_name = Some(
+                            env.get_string(&JString::from(value))
+                                .map_err(|error| error.to_string())?
+                                .to_string_lossy()
+                                .into_owned(),
+                        );
+                    }
+                }
+
+                let size_key = env.new_string("_size").map_err(|error| error.to_string())?;
+                let size_column = env
+                    .call_method(
+                        &cursor,
+                        "getColumnIndex",
+                        "(Ljava/lang/String;)I",
+                        &[(&size_key).into()],
+                    )
+                    .map_err(|error| error.to_string())?
+                    .i()
+                    .map_err(|error| error.to_string())?;
+                if size_column >= 0 {
+                    let value = env
+                        .call_method(&cursor, "getLong", "(I)J", &[size_column.into()])
+                        .map_err(|error| error.to_string())?
+                        .j()
+                        .map_err(|error| error.to_string())?;
+                    if value >= 0 {
+                        queried_size = Some(value as u64);
+                    }
+                }
+            }
+            env.call_method(&cursor, "close", "()V", &[])
+                .map_err(|error| error.to_string())?;
+        }
+
+        let mode = env.new_string("r").map_err(|error| error.to_string())?;
+        let descriptor = env
+            .call_method(
+                &resolver,
+                "openFileDescriptor",
+                "(Landroid/net/Uri;Ljava/lang/String;)Landroid/os/ParcelFileDescriptor;",
+                &[(&uri).into(), (&mode).into()],
+            )
+            .map_err(|error| error.to_string())?
+            .l()
+            .map_err(|error| error.to_string())?;
+        if descriptor.is_null() {
+            return Err(format!("无法打开文件 URI：{uri_string}"));
+        }
+        let fd = env
+            .call_method(&descriptor, "detachFd", "()I", &[])
+            .map_err(|error| error.to_string())?
+            .i()
+            .map_err(|error| error.to_string())?;
+        // SAFETY: detachFd transfers ownership of the descriptor to Rust.
+        let file = unsafe { std::fs::File::from_raw_fd(fd) };
+        let file_size = match queried_size {
+            Some(size) => size,
+            None => file
+                .metadata()
+                .map_err(|error| format!("无法读取文件大小：{error}"))?
+                .len(),
+        };
+        let file_name = safe_file_name(display_name.as_deref().unwrap_or("file"));
+        Ok(AndroidSourceFile {
+            file,
+            file_name,
+            file_size,
+        })
+    })
+}
+
+#[cfg(target_os = "android")]
 fn mime_type(file_name: &str) -> &'static str {
     match Path::new(file_name)
         .extension()
@@ -858,22 +1029,61 @@ pub async fn send_file(
         "send_file request: path={} target={}:{}",
         path, target_ip, target_port
     );
-    let p = Path::new(&path);
-    if !p.exists() {
-        let msg = format!("file not found: {path}");
-        eprintln!("{}", msg);
-        return Err(msg);
-    }
-    let metadata = tokio::fs::metadata(p).await.map_err(|e| e.to_string())?;
-    if !metadata.is_file() {
-        return Err("only files supported in MVP, folders TODO".into());
-    }
-    let file_name = p
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("file")
-        .to_string();
-    let file_size = metadata.len();
+    let (mut file, file_name, file_size) = {
+        #[cfg(target_os = "android")]
+        if path.starts_with("content://") {
+            let source = open_android_content_uri(&app, &path)?;
+            (
+                tokio::fs::File::from_std(source.file),
+                source.file_name,
+                source.file_size,
+            )
+        } else {
+            let p = Path::new(&path);
+            if !p.exists() {
+                let msg = format!("file not found: {path}");
+                eprintln!("{}", msg);
+                return Err(msg);
+            }
+            let metadata = tokio::fs::metadata(p).await.map_err(|e| e.to_string())?;
+            if !metadata.is_file() {
+                return Err("only files supported in MVP, folders TODO".into());
+            }
+            let file_name = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file")
+                .to_string();
+            (
+                tokio::fs::File::open(p).await.map_err(|e| e.to_string())?,
+                file_name,
+                metadata.len(),
+            )
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let p = Path::new(&path);
+            if !p.exists() {
+                let msg = format!("file not found: {path}");
+                eprintln!("{}", msg);
+                return Err(msg);
+            }
+            let metadata = tokio::fs::metadata(p).await.map_err(|e| e.to_string())?;
+            if !metadata.is_file() {
+                return Err("only files supported in MVP, folders TODO".into());
+            }
+            let file_name = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file")
+                .to_string();
+            (
+                tokio::fs::File::open(p).await.map_err(|e| e.to_string())?,
+                file_name,
+                metadata.len(),
+            )
+        }
+    };
     let task_id = task_id_opt.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let header = FileHeader {
         file_name: file_name.clone(),
@@ -910,13 +1120,7 @@ pub async fn send_file(
     if response.trim() != "ACCEPT" {
         return Err("接收端拒绝了文件".into());
     }
-    println!("Header sent, opening file {:?}", p);
-    let mut file = tokio::fs::File::open(p).await.map_err(|e| {
-        let msg = format!("open file {:?}: {e}", p);
-        eprintln!("{}", msg);
-        msg
-    })?;
-    println!("File opened, size {}", file_size);
+    println!("File opened, name {}, size {}", file_name, file_size);
     let mut buf = vec![0u8; CHUNK_SIZE];
     let mut sent: u64 = 0;
     let start = std::time::Instant::now();
