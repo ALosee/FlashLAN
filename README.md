@@ -79,14 +79,17 @@ npx sbean view button
 - `greet(name: string) -> string` - 示例
 - `get_device_info() -> DeviceInfo` - 本机设备信息
 - `discover_devices() -> DeviceInfo[]` - mDNS 发现 (TODO)
-- `send_file(path: string, target_ip: string) -> Result<string, string>` - 文件发送 (TODO)
+- `send_file(path: string, target_ip: string) -> Result<string, string>` - 文件发送
+
+接收文件在 Android 10+ 使用 MediaStore 写入公共 `Download/FlashLAN`，接收期间以 pending 条目保存，完成后发布到系统文件管理器；旧版本或 MediaStore 不可用时回退到应用数据目录。前端通过 `transfer_started`、`transfer_progress`、`transfer_complete` 事件展示收发方向、进度、速度与保存位置。
 
 ## 下一步
 
 - [ ] 实现 mDNS 设备发现 (mdns-sd)
-- [ ] 实现 TCP/QUIC 文件传输 + 进度事件
+- [x] 实现 TCP 文件传输 + 进度事件
 - [ ] 拖拽/剪贴板集成
-- [ ] 托盘、通知、自动接收设置
+- [ ] 托盘、通知
+- [x] 接收确认与自动接收设置
 
 ```
 

@@ -8,7 +8,7 @@ import { SBadge } from '@/ui/components/badge'
 import { SSeparator } from '@/ui/components/separator'
 import { isTauri } from '@/utils/tauri'
 import { useDeviceStore } from '@/stores/device'
-import { useTransferStore } from '@/stores/transfer'
+import { type TransferTask, useTransferStore } from '@/stores/transfer'
 
 const deviceStore = useDeviceStore()
 const transferStore = useTransferStore()
@@ -111,6 +111,21 @@ function formatSpeed(bytesPerSec: number) {
   return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`
 }
 
+function formatBytes(bytes: number) {
+  if (!bytes) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
+}
+
+function statusLabel(task: TransferTask) {
+  if (task.status === 'completed') return '已完成'
+  if (task.status === 'failed') return '失败'
+  if (task.direction === 'receive') return '接收中'
+  return task.status === 'transferring' ? '发送中' : '等待中'
+}
+
 onMounted(async () => {
   await deviceStore.fetchLocal()
   await deviceStore.discover()
@@ -124,7 +139,9 @@ onMounted(async () => {
     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div class="flex-1 min-w-0">
         <h1 class="text-xl font-bold tracking-tight">快速传文件</h1>
-        <p class="text-sm text-muted-foreground mt-1">拖拽文件到此处，或选择设备直接发送</p>
+        <p class="text-sm text-muted-foreground mt-1">
+          拖拽文件到此处，或选择设备直接发送；接收文件会自动显示在这里
+        </p>
       </div>
       <div
         class="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end bg-muted/50 sm:bg-transparent px-3 py-2 sm:p-0 rounded-lg"
@@ -308,7 +325,10 @@ onMounted(async () => {
           class="flex items-center gap-4 p-3 rounded-lg border bg-card"
         >
           <div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-            <SIcon icon="lucide:file-text" class="text-primary" />
+            <SIcon
+              :icon="task.direction === 'receive' ? 'lucide:download' : 'lucide:file-up'"
+              class="text-primary"
+            />
           </div>
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium truncate flex items-center gap-2">
@@ -323,23 +343,24 @@ onMounted(async () => {
                 "
                 size="sm"
               >
-                {{
-                  task.status === 'completed'
-                    ? '已完成'
-                    : task.status === 'failed'
-                      ? '失败'
-                      : task.status === 'transferring'
-                        ? '传输中'
-                        : '等待中'
-                }}
+                {{ statusLabel(task) }}
               </SBadge>
             </div>
             <div class="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
-              <span>{{ task.targetIp }}</span>
+              <span>
+                {{ task.direction === 'receive' ? '接收自' : '发送至' }} {{ task.targetIp }}
+              </span>
               <span v-if="task.speed">· {{ formatSpeed(task.speed) }}</span>
             </div>
             <div v-if="task.error" class="text-xs text-destructive mt-1 truncate">
               {{ task.error }}
+            </div>
+            <div
+              v-else-if="task.status === 'completed' && task.direction === 'receive'"
+              class="text-xs text-success mt-1 truncate"
+            >
+              <SIcon icon="lucide:folder-check" class="inline-block text-xs mr-1" />
+              已保存至 {{ task.filePath || 'Download/FlashLAN' }}
             </div>
             <div class="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
               <div
@@ -350,7 +371,10 @@ onMounted(async () => {
           </div>
           <div class="text-right shrink-0">
             <div class="text-sm font-medium">{{ task.progress.toFixed(0) }}%</div>
-            <div class="text-xs text-muted-foreground">{{ task.transferred }}/{{ task.total }}</div>
+            <div class="text-xs text-muted-foreground">
+              {{ formatBytes(task.transferred) }}
+              <span v-if="task.total">/ {{ formatBytes(task.total) }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -366,7 +390,7 @@ onMounted(async () => {
         </div>
       </template>
       <div class="p-4 text-center text-sm text-muted-foreground">
-        暂无传输任务，选择文件并发送至设备
+        暂无传输任务，选择文件发送，或等待其他设备发送到本机
       </div>
     </SCard>
   </div>

@@ -2,8 +2,8 @@ mod discovery;
 mod transfer;
 
 use discovery::DeviceInfo;
-use tauri::Manager;
 use std::{path::PathBuf, sync::OnceLock};
+use tauri::Manager;
 
 static MDNS_DAEMON: OnceLock<mdns_sd::ServiceDaemon> = OnceLock::new();
 
@@ -34,9 +34,35 @@ async fn send_file(
     transfer::send_file(path, target_ip, port, task_id, app).await
 }
 
+#[tauri::command]
+fn respond_transfer_request(
+    task_id: String,
+    accepted: bool,
+    transfer_manager: tauri::State<'_, transfer::TransferManager>,
+) -> Result<(), String> {
+    transfer_manager.respond(&task_id, accepted)
+}
+
+#[tauri::command]
+fn get_pending_transfer_requests(
+    transfer_manager: tauri::State<'_, transfer::TransferManager>,
+) -> Result<Vec<transfer::TransferRequest>, String> {
+    transfer_manager.pending_requests()
+}
+
+#[tauri::command]
+fn set_auto_receive(
+    enabled: bool,
+    transfer_manager: tauri::State<'_, transfer::TransferManager>,
+) -> Result<(), String> {
+    transfer_manager.set_auto_receive(enabled);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(transfer::TransferManager::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -48,8 +74,18 @@ pub fn run() {
                 }
                 Err(e) => eprintln!("mDNS register failed: {e}"),
             }
-            // Start file server
+            // Start file server. Android receives through MediaStore into the
+            // public Download/FlashLAN directory; this private path is only a
+            // fallback for older devices or a failed MediaStore operation.
             let handle = app.handle().clone();
+            #[cfg(target_os = "android")]
+            let mut save_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| PathBuf::from("/tmp"))
+                .join("Download")
+                .join("FlashLAN");
+            #[cfg(not(target_os = "android"))]
             let mut save_dir = dirs::download_dir()
                 .or_else(|| app.path().download_dir().ok())
                 .or_else(|| app.path().app_data_dir().ok())
@@ -66,14 +102,25 @@ pub fn run() {
             } else {
                 println!("FlashLAN save_dir: {:?}", save_dir);
             }
+            let transfer_manager = app.state::<transfer::TransferManager>().inner().clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = transfer::start_file_server(handle, save_dir).await {
+                if let Err(e) =
+                    transfer::start_file_server(handle, save_dir, transfer_manager).await
+                {
                     eprintln!("file server failed: {e}");
                 }
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, get_device_info, discover_devices, send_file])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            get_device_info,
+            discover_devices,
+            send_file,
+            respond_transfer_request,
+            get_pending_transfer_requests,
+            set_auto_receive
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

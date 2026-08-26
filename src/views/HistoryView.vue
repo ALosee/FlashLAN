@@ -1,34 +1,22 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { SCard } from '@/ui/components/card'
 import { SIcon } from '@/ui/components/icon'
 import { SBadge } from '@/ui/components/badge'
+import { useTransferStore } from '@/stores/transfer'
 
-const records = [
-  {
-    name: 'design-spec-2026.pdf',
-    size: '24.5 MB',
-    time: '昨天 14:32',
-    from: 'MacBook Air',
-    status: '已完成',
-    icon: 'lucide:file-text',
-  },
-  {
-    name: 'project-assets.zip',
-    size: '128.3 MB',
-    time: '昨天 10:15',
-    from: 'Windows PC',
-    status: '已完成',
-    icon: 'lucide:file-archive',
-  },
-  {
-    name: 'demo-video.mp4',
-    size: '312.0 MB',
-    time: '前天 18:20',
-    from: 'iPhone 15',
-    status: '已完成',
-    icon: 'lucide:file-video',
-  },
-]
+const transferStore = useTransferStore()
+const records = computed(() =>
+  transferStore.tasks.filter(task => task.status === 'completed' || task.status === 'failed'),
+)
+
+function formatBytes(bytes: number) {
+  if (!bytes) return '未知大小'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
+}
 </script>
 
 <template>
@@ -37,32 +25,47 @@ const records = [
       <h1 class="text-xl font-bold tracking-tight">传输记录</h1>
       <p class="text-sm text-muted-foreground mt-1">查看历史收发文件</p>
     </div>
-    <SCard>
+    <SCard v-if="records.length">
       <div class="divide-y -m-6">
         <div
           v-for="item in records"
-          :key="item.name"
+          :key="item.id"
           class="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors"
         >
           <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
-            <SIcon :icon="item.icon" />
+            <SIcon :icon="item.direction === 'receive' ? 'lucide:download' : 'lucide:upload'" />
           </div>
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium truncate flex items-center gap-2">
-              {{ item.name }}
-              <span class="text-xs text-muted-foreground font-normal">· {{ item.size }}</span>
+              {{ item.fileName }}
+              <span class="text-xs text-muted-foreground font-normal">
+                · {{ formatBytes(item.total) }}
+              </span>
             </div>
             <div class="text-xs text-muted-foreground flex items-center gap-1.5 mt-1 truncate">
               <SIcon icon="lucide:clock-3" class="text-xs" />
-              {{ item.time }} · 接收自 {{ item.from }} · 已保存至 ~/Downloads
+              {{ item.direction === 'receive' ? '接收自' : '发送至' }} {{ item.targetIp }}
+              <span v-if="item.direction === 'receive'">
+                · 已保存至 {{ item.filePath || 'Download/FlashLAN' }}
+              </span>
             </div>
           </div>
-          <SBadge color="success" size="sm" class="shrink-0">
-            <SIcon icon="lucide:check" class="text-xs" />
-            {{ item.status }}
+          <SBadge
+            :color="item.status === 'completed' ? 'success' : 'destructive'"
+            size="sm"
+            class="shrink-0"
+          >
+            <SIcon
+              :icon="item.status === 'completed' ? 'lucide:check' : 'lucide:x'"
+              class="text-xs"
+            />
+            {{ item.status === 'completed' ? '已完成' : '失败' }}
           </SBadge>
         </div>
       </div>
+    </SCard>
+    <SCard v-else>
+      <div class="p-8 text-center text-sm text-muted-foreground">暂无已完成的传输记录</div>
     </SCard>
   </div>
 </template>

@@ -21,7 +21,6 @@ tauri-build = { version = "2", features = [] }
 mdns-sd = "0.13"
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
-get_if_addrs = "0.5"
 dirs = "5.0"
 hostname = "0.4"
 local-ip-address = "0.6"
@@ -31,3 +30,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-dialog = "2.7.2"
 
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"

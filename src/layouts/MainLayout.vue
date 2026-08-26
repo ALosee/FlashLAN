@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { SButton } from '@/ui/components/button'
 import { SIcon } from '@/ui/components/icon'
 import { SSeparator } from '@/ui/components/separator'
 import { SBadge } from '@/ui/components/badge'
 import { useDeviceStore } from '@/stores/device'
+import { useTransferStore } from '@/stores/transfer'
 
 const router = useRouter()
 const route = useRoute()
 const deviceStore = useDeviceStore()
+const transferStore = useTransferStore()
 const showMobileMenu = ref(false)
+const respondingTaskId = ref('')
 
 const menus = [
   { label: '传文件', icon: 'lucide:upload', path: '/' },
@@ -24,8 +27,33 @@ function navTo(path: string) {
   showMobileMenu.value = false
 }
 
-onMounted(() => {
+const activeTasks = computed(() =>
+  transferStore.tasks.filter(task => task.status === 'transferring' || task.status === 'pending'),
+)
+const pendingRequest = computed(() => transferStore.pendingRequests[0])
+
+function formatBytes(bytes: number) {
+  if (!bytes) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
+}
+
+async function respondToRequest(taskId: string, accepted: boolean) {
+  respondingTaskId.value = taskId
+  try {
+    await transferStore.respondToRequest(taskId, accepted)
+  } catch (error) {
+    console.error('[FlashLAN] transfer request response failed', error)
+  } finally {
+    respondingTaskId.value = ''
+  }
+}
+
+onMounted(async () => {
   deviceStore.fetchLocal()
+  await transferStore.initialize()
 })
 </script>
 
@@ -164,6 +192,92 @@ onMounted(() => {
     >
       <RouterView />
     </main>
+
+    <!-- Incoming file confirmation. The server waits for this decision before sending bytes. -->
+    <div
+      v-if="pendingRequest"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div class="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
+      <div class="relative w-full max-w-sm rounded-2xl border bg-card shadow-2xl p-5">
+        <div class="flex items-start gap-3">
+          <div
+            class="size-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0"
+          >
+            <SIcon icon="lucide:download" class="text-xl" />
+          </div>
+          <div class="min-w-0">
+            <h2 class="font-semibold">收到文件</h2>
+            <p class="text-sm text-muted-foreground mt-1 truncate">
+              {{ pendingRequest.peer }} 想向本机发送文件
+            </p>
+          </div>
+        </div>
+        <div class="mt-4 rounded-xl bg-muted/60 p-3">
+          <div class="font-medium truncate">{{ pendingRequest.fileName }}</div>
+          <div class="text-xs text-muted-foreground mt-1">
+            {{ formatBytes(pendingRequest.total) }} · 文件将在确认后开始传输
+          </div>
+        </div>
+        <div class="mt-5 flex gap-3">
+          <SButton
+            variant="outline"
+            class="flex-1"
+            :disabled="respondingTaskId === pendingRequest.taskId"
+            @click="respondToRequest(pendingRequest.taskId, false)"
+          >
+            拒绝
+          </SButton>
+          <SButton
+            class="flex-1"
+            :loading="respondingTaskId === pendingRequest.taskId"
+            @click="respondToRequest(pendingRequest.taskId, true)"
+          >
+            接收文件
+          </SButton>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keep incoming and outgoing transfers visible without requiring a page switch. -->
+    <div
+      v-if="activeTasks.length"
+      class="fixed right-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:right-5 md:bottom-5 z-40 w-[min(22rem,calc(100vw-1.5rem))]"
+    >
+      <button
+        class="w-full text-left rounded-xl border bg-card/95 backdrop-blur shadow-xl p-3 transition-colors hover:bg-muted/50"
+        @click="navTo('/')"
+      >
+        <div class="flex items-center justify-between gap-3">
+          <span class="text-sm font-semibold flex items-center gap-2">
+            <SIcon icon="lucide:arrow-down-to-line" class="text-primary" />
+            {{ activeTasks.length }} 个文件正在传输
+          </span>
+          <SIcon icon="lucide:chevron-right" class="text-muted-foreground" />
+        </div>
+        <div class="mt-2 space-y-2">
+          <div v-for="task in activeTasks.slice(0, 2)" :key="task.id" class="min-w-0">
+            <div class="flex items-center justify-between gap-2 text-xs">
+              <span class="truncate">{{ task.fileName }}</span>
+              <span class="shrink-0 text-muted-foreground">{{ task.progress.toFixed(0) }}%</span>
+            </div>
+            <div class="h-1.5 rounded-full bg-muted overflow-hidden mt-1">
+              <div
+                class="h-full bg-primary rounded-full transition-all"
+                :style="{ width: `${task.progress}%` }"
+              />
+            </div>
+            <div class="text-[11px] text-muted-foreground mt-1">
+              {{ task.direction === 'receive' ? '接收中' : '发送中' }} ·
+              {{ formatBytes(task.transferred) }}
+              <span v-if="task.total">/ {{ formatBytes(task.total) }}</span>
+            </div>
+          </div>
+        </div>
+      </button>
+    </div>
 
     <!-- Mobile bottom nav -->
     <nav
