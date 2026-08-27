@@ -42,6 +42,16 @@ export interface TransferRequest {
   fileName: string
   total: number
   peer: string
+  fileCount: number
+}
+
+/** A text message shared over the encrypted channel. */
+export interface TextMessageItem {
+  id: string
+  text: string
+  peer: string
+  direction: 'send' | 'receive'
+  createdAt: number
 }
 
 interface RequestPayload {
@@ -49,6 +59,7 @@ interface RequestPayload {
   file_name: string
   total: number
   peer: string
+  file_count?: number
 }
 
 function toTransferRequest(payload: RequestPayload): TransferRequest {
@@ -57,6 +68,7 @@ function toTransferRequest(payload: RequestPayload): TransferRequest {
     fileName: payload.file_name,
     total: payload.total,
     peer: payload.peer,
+    fileCount: payload.file_count ?? 1,
   }
 }
 
@@ -84,6 +96,7 @@ interface CompletePayload {
 
 export const useTransferStore = defineStore('transfer', () => {
   const historyStorageKey = 'flashlan.transfer-history'
+  const textMessagesStorageKey = 'flashlan.text-messages'
   const autoReceiveStorageKey = 'flashlan.auto-receive'
 
   function loadTasks() {
@@ -97,8 +110,30 @@ export const useTransferStore = defineStore('transfer', () => {
     }
   }
 
+  function loadTextMessages() {
+    if (typeof localStorage === 'undefined') return [] as TextMessageItem[]
+    try {
+      const value = localStorage.getItem(textMessagesStorageKey)
+      const parsed = value ? JSON.parse(value) : []
+      if (!Array.isArray(parsed)) return [] as TextMessageItem[]
+      return parsed.filter(
+        (item): item is TextMessageItem =>
+          typeof item === 'object' &&
+          item !== null &&
+          typeof item.id === 'string' &&
+          typeof item.text === 'string' &&
+          typeof item.peer === 'string' &&
+          (item.direction === 'send' || item.direction === 'receive') &&
+          typeof item.createdAt === 'number',
+      )
+    } catch {
+      return [] as TextMessageItem[]
+    }
+  }
+
   const tasks = ref<TransferTask[]>(loadTasks())
   const pendingRequests = ref<TransferRequest[]>([])
+  const textMessages = ref<TextMessageItem[]>(loadTextMessages())
   const autoReceiveEnabled = ref(
     typeof localStorage !== 'undefined' && localStorage.getItem(autoReceiveStorageKey) === 'true',
   )
@@ -115,6 +150,24 @@ export const useTransferStore = defineStore('transfer', () => {
     },
     { deep: true },
   )
+
+  watch(
+    textMessages,
+    value => {
+      if (typeof localStorage === 'undefined') return
+      localStorage.setItem(textMessagesStorageKey, JSON.stringify(value.slice(0, 200)))
+    },
+    { deep: true },
+  )
+
+  function addTextMessage(message: TextMessageItem) {
+    textMessages.value.unshift(message)
+    if (textMessages.value.length > 200) textMessages.value.length = 200
+  }
+
+  function clearTextMessages() {
+    textMessages.value = []
+  }
 
   function addTask(task: TransferTask) {
     tasks.value.unshift(task)
@@ -244,6 +297,15 @@ export const useTransferStore = defineStore('transfer', () => {
       await listen<RequestPayload>('transfer_request', event => {
         handleTransferRequest(event.payload)
       })
+      await listen<{ id: string; text: string; peer: string }>('text_message', event => {
+        addTextMessage({
+          ...event.payload,
+          direction: 'receive',
+          createdAt: Date.now(),
+        })
+        const preview = event.payload.text.replace(/\s+/g, ' ').trim()
+        void notifyIncoming(`文本消息：${preview.slice(0, 24)}${preview.length > 24 ? '…' : ''}`)
+      })
       await listen<StartedPayload>('transfer_started', event => {
         handleStarted(event.payload)
       })
@@ -304,15 +366,18 @@ export const useTransferStore = defineStore('transfer', () => {
     task.error = '传输已取消'
   }
 
-  async function sendFile(filePath: string, targetIp: string, targetPort?: number) {
+  /** filePaths: one or more paths sent as ONE combined session. */
+  async function sendFile(filePaths: string | string[], targetIp: string, targetPort?: number) {
+    const paths = Array.isArray(filePaths) ? filePaths : [filePaths]
     if (!isTauri()) {
       const mockId = Math.random().toString(36).slice(2)
-      const fileName = filePath.split('/').pop() || 'file'
+      const fileName =
+        paths.length === 1 ? paths[0]?.split('/').pop() || 'file' : `${paths.length} 个文件`
       const task: TransferTask = {
         id: mockId,
         fileName,
-        filePath,
-        fileOpenPath: filePath,
+        filePath: paths.join(', '),
+        fileOpenPath: paths[0],
         progress: 0,
         speed: 0,
         transferred: 0,
@@ -339,13 +404,16 @@ export const useTransferStore = defineStore('transfer', () => {
       return mockId
     }
     await ensureListener()
-    const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'file'
+    const fileName =
+      paths.length === 1
+        ? paths[0]?.split('/').pop() || paths[0]?.split('\\').pop() || 'file'
+        : `${paths.length} 个文件`
     const taskId = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)
     const task: TransferTask = {
       id: taskId,
       fileName,
-      filePath,
-      fileOpenPath: filePath,
+      filePath: paths.join(', '),
+      fileOpenPath: paths[0],
       progress: 0,
       speed: 0,
       transferred: 0,
@@ -359,7 +427,7 @@ export const useTransferStore = defineStore('transfer', () => {
     tasks.value.unshift(task)
     try {
       const returnedId = await invoke<string>('send_file', {
-        path: filePath,
+        path: paths,
         targetIp,
         targetPort,
         taskId,
@@ -369,11 +437,33 @@ export const useTransferStore = defineStore('transfer', () => {
       return task.id
     } catch (e) {
       const msg = String(e)
-      console.error('[FlashLAN] send_file failed', { filePath, targetIp, error: msg })
+      console.error('[FlashLAN] send_file failed', { filePaths: paths, targetIp, error: msg })
       task.status = 'failed'
       task.error = msg
       throw e
     }
+  }
+
+  /** Send clipboard-style text over the encrypted channel. */
+  async function sendText(text: string, targetIp: string, targetPort?: number) {
+    if (!isTauri()) {
+      addTextMessage({
+        id: `mock-${Date.now()}`,
+        text,
+        peer: targetIp,
+        direction: 'send',
+        createdAt: Date.now(),
+      })
+      return
+    }
+    await invoke('send_text', { text, targetIp, targetPort })
+    addTextMessage({
+      id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+      text,
+      peer: targetIp,
+      direction: 'send',
+      createdAt: Date.now(),
+    })
   }
 
   return {
@@ -390,5 +480,8 @@ export const useTransferStore = defineStore('transfer', () => {
     setAutoReceive,
     sendFile,
     cancelTask,
+    sendText,
+    textMessages,
+    clearTextMessages,
   }
 })

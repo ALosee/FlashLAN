@@ -92,6 +92,7 @@ export const useDeviceStore = defineStore('device', () => {
   }
 
   async function discover() {
+    if (isDiscovering.value) return
     if (!isTauri()) {
       isDiscovering.value = true
       await new Promise(r => setTimeout(r, 600))
@@ -145,6 +146,13 @@ export const useDeviceStore = defineStore('device', () => {
   /** Probe manual devices so the UI can show 离线 instead of a fake 在线. */
   async function refreshManualStatus() {
     if (!manualDevices.value.length) return
+    if (!isTauri()) {
+      manualDevices.value.forEach(device => {
+        device.online = true
+      })
+      rebuildDevices()
+      return
+    }
     await Promise.allSettled(
       manualDevices.value.map(async device => {
         try {

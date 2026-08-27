@@ -11,14 +11,70 @@ use std::{
 };
 
 // Alias kept short; std Mutex guards are used briefly.
+use crate::security::encode_b64;
+use base64::Engine as _;
 use std::sync::Mutex as StdMutex;
 #[cfg(target_os = "android")]
 use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
+use tokio_rustls::{TlsAcceptor, TlsConnector};
+
+/// Either a plain TCP stream or an upgraded TLS stream. After the handshake
+/// every read/write goes through this enum so the transfer code is agnostic.
+pub enum Wire {
+    /// Server-side TLS stream.
+    TlsServer(Box<tokio_rustls::server::TlsStream<TcpStream>>),
+    /// Client-side TLS stream.
+    TlsClient(Box<tokio_rustls::client::TlsStream<TcpStream>>),
+}
+
+impl AsyncRead for Wire {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match &mut *self {
+            Wire::TlsServer(stream) => std::pin::Pin::new(stream).poll_read(cx, buf),
+            Wire::TlsClient(stream) => std::pin::Pin::new(stream).poll_read(cx, buf),
+        }
+    }
+}
+
+impl AsyncWrite for Wire {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        data: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        match &mut *self {
+            Wire::TlsServer(stream) => std::pin::Pin::new(stream).poll_write(cx, data),
+            Wire::TlsClient(stream) => std::pin::Pin::new(stream).poll_write(cx, data),
+        }
+    }
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match &mut *self {
+            Wire::TlsServer(stream) => std::pin::Pin::new(stream).poll_flush(cx),
+            Wire::TlsClient(stream) => std::pin::Pin::new(stream).poll_flush(cx),
+        }
+    }
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match &mut *self {
+            Wire::TlsServer(stream) => std::pin::Pin::new(stream).poll_shutdown(cx),
+            Wire::TlsClient(stream) => std::pin::Pin::new(stream).poll_shutdown(cx),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferStarted {
@@ -55,12 +111,27 @@ pub struct TransferResult {
     pub peer: String,
 }
 
+/// Emitted when a peer shares clipboard text over the encrypted channel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextMessage {
+    pub id: String,
+    pub text: String,
+    pub peer: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferRequest {
     pub task_id: String,
     pub file_name: String,
     pub total: u64,
     pub peer: String,
+    /// Number of concrete files in this session (batch shows real count).
+    #[serde(default = "one")]
+    pub file_count: u32,
+}
+
+fn one() -> u32 {
+    1
 }
 
 /// Cancellation registry: task ids queued for cancellation from the UI.
@@ -219,6 +290,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const CONNECTION_TEST_TIMEOUT: Duration = Duration::from_secs(3);
 /// How long the sender waits for the receiver's final OK/REJECT ack.
 const ACK_TIMEOUT: Duration = Duration::from_secs(10);
+/// Budget for TLS + identity banner exchange.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// Header sent before file bytes: JSON + newline
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -250,6 +323,14 @@ struct SendEntry {
     /// Already-opened source (Android content URIs cannot be re-opened by
     /// path), otherwise the file is opened lazily from `absolute_path`.
     preopened: Option<std::fs::File>,
+}
+
+fn chrono_like_timestamp_short() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .to_string()
 }
 
 async fn collect_send_entries(path: &Path) -> Result<(String, Vec<SendEntry>, u64), String> {
@@ -344,7 +425,61 @@ pub async fn test_connection(target_ip: String, target_port: u16) -> Result<(), 
     Ok(())
 }
 
-pub async fn start_file_server(app: AppHandle, manager: TransferManager) -> Result<(), String> {
+/// Establish a TLS session and verify the identity advertised by the peer.
+/// The barcode contains this fingerprint, so pairing must not trust the QR
+/// payload until the device on the other end of the socket presents the same
+/// identity over the encrypted channel.
+pub async fn verify_peer_fingerprint(
+    target_ip: String,
+    target_port: u16,
+    expected_fingerprint: String,
+    connector: TlsConnector,
+    own_fingerprint: String,
+) -> Result<(), String> {
+    let expected = expected_fingerprint.trim().to_ascii_lowercase();
+    if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("设备指纹格式无效".into());
+    }
+
+    let ip = target_ip
+        .trim()
+        .parse::<IpAddr>()
+        .map_err(|_| "IP 地址格式无效".to_string())?;
+    let addr = SocketAddr::new(ip, target_port);
+    let tcp = tokio::time::timeout(CONNECTION_TEST_TIMEOUT, TcpStream::connect(addr))
+        .await
+        .map_err(|_| format!("连接 {}:{} 超时", ip, target_port))?
+        .map_err(|error| format!("无法连接 {}:{}：{}", ip, target_port, error))?;
+    let tls = tokio::time::timeout(
+        HANDSHAKE_TIMEOUT,
+        connector.connect(
+            rustls::pki_types::ServerName::try_from("flashlan.local".to_string()).unwrap(),
+            tcp,
+        ),
+    )
+    .await
+    .map_err(|_| "TLS 握手超时".to_string())?
+    .map_err(|error| format!("TLS 握手失败：{error}"))?;
+    let mut wire = Wire::TlsClient(Box::new(tls));
+    send_hello(&mut wire, &own_fingerprint).await?;
+    let actual = tokio::time::timeout(HANDSHAKE_TIMEOUT, read_hello(&mut wire))
+        .await
+        .map_err(|_| "等待设备身份信息超时".to_string())??
+        .to_ascii_lowercase();
+
+    if actual != expected {
+        return Err("二维码中的设备指纹与实际设备不一致，请重新扫码".into());
+    }
+    Ok(())
+}
+
+pub async fn start_file_server(
+    app: AppHandle,
+    manager: TransferManager,
+    tls: TlsAcceptor,
+    identity_fingerprint: String,
+    trust: Arc<crate::security::TrustStore>,
+) -> Result<(), String> {
     let listener = TcpListener::bind(format!("0.0.0.0:{}", TRANSFER_PORT))
         .await
         .map_err(|e| format!("bind transfer port: {e}"))?;
@@ -357,29 +492,108 @@ pub async fn start_file_server(app: AppHandle, manager: TransferManager) -> Resu
             };
             let app_clone = app.clone();
             let manager_clone = manager.clone();
+            let tls_clone = tls.clone();
+            let fingerprint_clone = identity_fingerprint.clone();
+            let trust_clone = trust.clone();
             tokio::spawn(async move {
-                let save_dir = match manager_clone.save_dir() {
-                    Ok(path) if !path.as_os_str().is_empty() => path,
-                    Ok(_) => {
-                        eprintln!("save path is not configured");
+                // TLS happens first; transfer args are resolved after the
+                // handshake so a bad client cannot occupy save-dir locks.
+                let peer_addr = addr.to_string();
+                let (mut wire, peer_id) = match tokio::time::timeout(
+                    HANDSHAKE_TIMEOUT,
+                    accept_session(socket, &tls_clone, &fingerprint_clone),
+                )
+                .await
+                {
+                    Ok(Ok(session)) => session,
+                    Ok(Err(error)) => {
+                        eprintln!("tls handshake from {peer_addr}: {error}");
                         return;
                     }
-                    Err(error) => {
-                        eprintln!("read save path failed: {error}");
+                    Err(_) => {
+                        eprintln!("tls handshake from {peer_addr}: timeout");
                         return;
                     }
                 };
-                if let Err(e) =
-                    handle_incoming(socket, save_dir, app_clone, manager_clone, addr.to_string())
-                        .await
+                let Some(save_dir) = manager_clone.save_dir_ok() else {
+                    eprintln!("save path is not configured");
+                    return;
+                };
+                let mut request = IncomingRequest {
+                    trusted: trust_clone.is_trusted(&peer_id.fingerprint),
+                };
+                // Loop per connection? One connection transfers one logical task.
+                if let Err(e) = handle_incoming(
+                    &mut wire,
+                    save_dir,
+                    app_clone,
+                    manager_clone,
+                    peer_addr,
+                    &mut request,
+                )
+                .await
                 {
-                    eprintln!("handle incoming from {addr}: {e}");
+                    eprintln!("handle incoming: {e}");
                 }
             });
         }
     });
     Ok(())
 }
+
+/// Result of the TLS handshake for one connection.
+pub struct PeerIdentity {
+    pub fingerprint: String,
+}
+
+impl TransferManager {
+    /// save_dir that exists and is non-empty, None otherwise.
+    fn save_dir_ok(&self) -> Option<PathBuf> {
+        self.save_dir()
+            .ok()
+            .filter(|path| !path.as_os_str().is_empty())
+    }
+}
+
+/// Perform the TLS handshake and exchange device identity banners:
+/// each side sends `HELLO <base64(json)>\n` with its fingerprint/name.
+async fn accept_session(
+    socket: TcpStream,
+    tls: &TlsAcceptor,
+    own_fingerprint: &str,
+) -> Result<(Wire, PeerIdentity), String> {
+    let stream = tls
+        .accept(socket)
+        .await
+        .map_err(|error| format!("tls accept: {error}"))?;
+    let mut wire = Wire::TlsServer(Box::new(stream));
+    send_hello(&mut wire, own_fingerprint).await?;
+    let peer = read_hello(&mut wire).await?;
+    Ok((wire, PeerIdentity { fingerprint: peer }))
+}
+
+async fn send_hello(wire: &mut Wire, fingerprint: &str) -> Result<(), String> {
+    let line = format!("{} {}\n", HELLO_MAGIC, encode_b64(fingerprint.as_bytes()));
+    wire.write_all(line.as_bytes())
+        .await
+        .map_err(|error| format!("write hello: {error}"))
+}
+
+async fn read_hello(wire: &mut Wire) -> Result<String, String> {
+    let line = read_line(wire, 512).await?;
+    let mut parts = line.split_whitespace();
+    let magic = parts.next().unwrap_or_default();
+    if magic != HELLO_MAGIC {
+        return Err("peer did not speak the FlashLAN handshake".into());
+    }
+    let payload = parts.next().unwrap_or_default();
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(payload.as_bytes())
+        .map_err(|_| "invalid hello payload")?;
+    Ok(String::from_utf8(decoded).map_err(|_| "invalid hello encoding")?)
+}
+
+const HELLO_MAGIC: &str = "HELLO1";
 
 pub fn open_file_location(app: &AppHandle, path: &str, file_name: &str) -> Result<(), String> {
     #[cfg(target_os = "android")]
@@ -395,15 +609,25 @@ pub fn open_file_location(app: &AppHandle, path: &str, file_name: &str) -> Resul
     }
 }
 
+pub struct IncomingRequest {
+    /// Whether the sender's fingerprint is in our trust store.
+    pub trusted: bool,
+}
+
 async fn handle_incoming(
-    mut socket: TcpStream,
+    socket: &mut Wire,
     save_dir: PathBuf,
     app: Arc<AppHandle>,
     manager: TransferManager,
     peer: String,
+    request: &mut IncomingRequest,
 ) -> Result<(), String> {
-    // Read the header before any file bytes are sent.
-    let header_str = read_line(&mut socket, 8192).await?;
+    // A connection starts either with a file header (JSON) or a quick
+    // "TEXT <base64>" clipboard share; TLS banner already identified the peer.
+    let header_str = read_line(socket, 8192).await?;
+    if header_str.starts_with("TEXT ") {
+        return handle_text_message(socket, &app, &peer, request.trusted, &header_str).await;
+    }
     println!("Received header: {}", header_str);
     let header: FileHeader = serde_json::from_slice(header_str.as_bytes()).map_err(|e| {
         let msg = format!("header json: {e} header={}", header_str);
@@ -412,7 +636,7 @@ async fn handle_incoming(
     })?;
     let file_name = safe_file_name(&header.file_name);
 
-    let (accepted, declined_reason) = if manager.auto_receive() {
+    let (accepted, declined_reason) = if manager.auto_receive() && request.trusted {
         (true, None)
     } else {
         let request = TransferRequest {
@@ -420,6 +644,11 @@ async fn handle_incoming(
             file_name: file_name.clone(),
             total: header.file_size,
             peer: peer.clone(),
+            file_count: header
+                .files
+                .as_ref()
+                .map(|list| list.len().max(1) as u32)
+                .unwrap_or(1),
         };
         let receiver = manager.register_request(request.clone())?;
         let _ = app.emit("transfer_request", request);
@@ -461,7 +690,11 @@ async fn handle_incoming(
     // Batch mode restores the original folder structure; on Android every
     // file goes into the public Download/FlashLAN/<root>/ collection.
     if let Some(batch_files) = header.files.clone() {
-        let root_name = safe_file_name(header.root.as_deref().unwrap_or(&file_name));
+        // Empty root => flat placement directly in the default location.
+        let root_name = match header.root.as_deref() {
+            Some("") | None => String::new(),
+            Some(other) => safe_file_name(other),
+        };
         return receive_batch(
             socket,
             app,
@@ -476,30 +709,40 @@ async fn handle_incoming(
         .await;
     }
 
-    let mut target = match ReceiveTarget::create(&app, &save_dir, &file_name).await {
-        Ok(target) => target,
-        Err(error) => {
-            let _ = app.emit(
-                "transfer_complete",
-                TransferResult {
-                    task_id: header.task_id.clone(),
-                    file_name: file_name.clone(),
-                    path: String::new(),
-                    open_path: None,
-                    success: false,
-                    message: error.clone(),
-                    direction: "receive".into(),
-                    peer: peer.clone(),
-                },
-            );
-            let _ = socket.write_all(b"REJECT\n").await;
-            return Err(error);
-        }
+    // Resume support: reply includes how many bytes we already have on disk
+    // (".part" suffix marks an unfinished file). Sender skips that prefix.
+    let mut target =
+        match ReceiveTarget::create(&app, &save_dir, &file_name, header.file_size).await {
+            Ok(target) => target,
+            Err(error) => {
+                let _ = app.emit(
+                    "transfer_complete",
+                    TransferResult {
+                        task_id: header.task_id.clone(),
+                        file_name: file_name.clone(),
+                        path: String::new(),
+                        open_path: None,
+                        success: false,
+                        message: error.clone(),
+                        direction: "receive".into(),
+                        peer: peer.clone(),
+                    },
+                );
+                let _ = socket.write_all(b"REJECT\n").await;
+                return Err(error);
+            }
+        };
+    let accept_reply = if target.resumed_bytes > 0 && header.file_size > target.resumed_bytes {
+        format!("ACCEPT {}\n", target.resumed_bytes)
+    } else {
+        "ACCEPT\n".to_string()
     };
-    if let Err(error) = socket.write_all(b"ACCEPT\n").await {
+    if let Err(error) = socket.write_all(accept_reply.as_bytes()).await {
         target.discard().await;
         return Err(error.to_string());
     }
+    // If we somehow hold more bytes than the file is long, restart from 0.
+    let skip_bytes = target.resumed_bytes.min(header.file_size);
     let _ = app.emit(
         "transfer_started",
         TransferStarted {
@@ -513,6 +756,8 @@ async fn handle_incoming(
     );
     let mut received: u64 = 0;
     let total = header.file_size;
+    // Resume: skip (discard) the prefix the receiver already holds.
+    let mut skipped: u64 = 0;
     let mut buf = vec![0u8; CHUNK_SIZE];
     let mut last_emit = std::time::Instant::now();
     let mut speed_meter = SpeedMeter::new();
@@ -544,26 +789,46 @@ async fn handle_incoming(
                 return Err(error.to_string());
             }
         };
+        if n == 0 && received + skipped < total {
+            target.discard().await;
+            let message = format!(
+                "connection closed after {}/{} bytes",
+                received + skipped,
+                total
+            );
+            let _ = app.emit(
+                "transfer_complete",
+                TransferResult {
+                    task_id: header.task_id.clone(),
+                    file_name: file_name.clone(),
+                    path: String::new(),
+                    open_path: None,
+                    success: false,
+                    message: message.clone(),
+                    direction: "receive".into(),
+                    peer: peer.clone(),
+                },
+            );
+            return Err(message);
+        }
         if n == 0 {
-            if received < total {
-                target.discard().await;
-                let message = format!("connection closed after {received}/{total} bytes");
-                let _ = app.emit(
-                    "transfer_complete",
-                    TransferResult {
-                        task_id: header.task_id.clone(),
-                        file_name: file_name.clone(),
-                        path: String::new(),
-                        open_path: None,
-                        success: false,
-                        message: message.clone(),
-                        direction: "receive".into(),
-                        peer: peer.clone(),
-                    },
-                );
-                return Err(message);
-            }
             break;
+        }
+        // Resume: drop the prefix instead of writing it a second time.
+        if skipped < skip_bytes {
+            let remaining_skip = (skip_bytes - skipped) as usize;
+            if n <= remaining_skip {
+                skipped += n as u64;
+                continue;
+            }
+            let usable = &buf[remaining_skip..];
+            skipped = skip_bytes;
+            if let Err(error) = target.file.write_all(usable).await {
+                target.discard().await;
+                return Err(error.to_string());
+            }
+            received += usable.len() as u64;
+            continue;
         }
         if let Err(error) = target.file.write_all(&buf[..n]).await {
             target.discard().await;
@@ -571,7 +836,7 @@ async fn handle_incoming(
         }
         received += n as u64;
         let progress = if total > 0 {
-            (received as f64 / total as f64) * 100.0
+            ((received + skipped) as f64 / total as f64) * 100.0
         } else {
             0.0
         };
@@ -592,7 +857,7 @@ async fn handle_incoming(
             );
             last_emit = std::time::Instant::now();
         }
-        if received >= total {
+        if received + skipped >= total {
             break;
         }
     }
@@ -637,7 +902,7 @@ async fn handle_incoming(
     Ok(())
 }
 
-async fn read_line(socket: &mut TcpStream, max_len: usize) -> Result<String, String> {
+async fn read_line<R: AsyncRead + Unpin>(socket: &mut R, max_len: usize) -> Result<String, String> {
     let mut buffer = Vec::new();
     let mut byte = [0u8; 1];
     loop {
@@ -712,6 +977,36 @@ fn unique_dir(parent: &Path, name: &str) -> PathBuf {
     }
 }
 
+/// Handle a "TEXT <base64>" line: emit to the UI and acknowledge.
+async fn handle_text_message(
+    socket: &mut Wire,
+    app: &AppHandle,
+    peer: &str,
+    _trusted: bool,
+    line: &str,
+) -> Result<(), String> {
+    use base64::Engine as _;
+    let payload = line.trim_start_matches("TEXT ").trim();
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(payload.as_bytes())
+        .map_err(|_| "invalid text payload")?;
+    let text = String::from_utf8(decoded).map_err(|_| "invalid text encoding")?;
+    if text.len() > 512 * 1024 {
+        return Err("text message too large".into());
+    }
+    let message = TextMessage {
+        id: uuid::Uuid::new_v4().to_string(),
+        text,
+        peer: peer.to_string(),
+    };
+    let _ = app.emit("text_message", message);
+    socket
+        .write_all(b"OK\n")
+        .await
+        .map_err(|error| format!("write text ack: {error}"))?;
+    Ok(())
+}
+
 /// Destination for one incoming file of a batch transfer: the public
 /// Downloads collection via MediaStore (preferred, Android 10+) or the
 /// visible folder tree under the configured save dir as a fallback.
@@ -784,7 +1079,7 @@ impl BatchSink {
 
 #[allow(clippy::too_many_arguments)]
 async fn receive_batch(
-    mut socket: TcpStream,
+    socket: &mut Wire,
     app: Arc<AppHandle>,
     peer: String,
     task_id: String,
@@ -798,14 +1093,19 @@ async fn receive_batch(
 
     // Where the user will find the folder afterwards.
     #[cfg(target_os = "android")]
-    let location = format!("Download/FlashLAN/{root_name}/");
-    #[cfg(not(target_os = "android"))]
-    let location = {
-        let _ = &save_dir;
-        unique_dir(&save_dir, &root_name)
-            .to_string_lossy()
-            .to_string()
+    let location = if root_name.is_empty() {
+        "Download/FlashLAN/".to_string()
+    } else {
+        format!("Download/FlashLAN/{root_name}/")
     };
+    #[cfg(not(target_os = "android"))]
+    let base_root = if root_name.is_empty() {
+        save_dir.clone()
+    } else {
+        unique_dir(&save_dir, &root_name)
+    };
+    #[cfg(not(target_os = "android"))]
+    let location = base_root.to_string_lossy().to_string();
 
     let _ = socket.write_all(b"ACCEPT\n").await;
     let _ = app.emit(
@@ -859,9 +1159,9 @@ async fn receive_batch(
             &app,
             &name_part,
             &if rel_dir.is_empty() {
-                format!("Download/FlashLAN/{root_name}/")
+                location.clone()
             } else {
-                format!("Download/FlashLAN/{root_name}/{rel_dir}/")
+                format!("{location}{rel_dir}/")
             },
         ) {
             Ok((file, uri)) => BatchSink {
@@ -881,10 +1181,7 @@ async fn receive_batch(
         };
 
         #[cfg(not(target_os = "android"))]
-        let sink = {
-            let root_dir = unique_dir(&save_dir, &root_name);
-            BatchSink::from_fallback(&root_dir, &rel_path, &name_part).await?
-        };
+        let sink = BatchSink::from_fallback(&base_root, &rel_path, &name_part).await?;
 
         let mut out = sink;
         let mut received_entry: u64 = 0;
@@ -1017,6 +1314,8 @@ fn unique_path(save_dir: &Path, file_name: &str) -> PathBuf {
 struct ReceiveTarget {
     file: tokio::fs::File,
     display_path: String,
+    /// Bytes already on disk before this session (resume support).
+    resumed_bytes: u64,
     #[cfg(target_os = "android")]
     media_uri: Option<String>,
     #[cfg(target_os = "android")]
@@ -1024,7 +1323,12 @@ struct ReceiveTarget {
 }
 
 impl ReceiveTarget {
-    async fn create(app: &AppHandle, save_dir: &Path, file_name: &str) -> Result<Self, String> {
+    async fn create(
+        app: &AppHandle,
+        save_dir: &Path,
+        file_name: &str,
+        expected_size: u64,
+    ) -> Result<Self, String> {
         #[cfg(not(target_os = "android"))]
         let _ = app;
         #[cfg(target_os = "android")]
@@ -1034,6 +1338,7 @@ impl ReceiveTarget {
                     return Ok(Self {
                         file: tokio::fs::File::from_std(file),
                         display_path: format!("Download/FlashLAN/{file_name}"),
+                        resumed_bytes: 0,
                         media_uri: Some(uri),
                         app: app.clone(),
                     });
@@ -1044,13 +1349,43 @@ impl ReceiveTarget {
             }
         }
 
-        let final_path = unique_path(save_dir, file_name);
-        let file = tokio::fs::File::create(&final_path)
+        // Resume support: a leftover "<name>.part" holds previous bytes.
+        let part_path = save_dir.join(format!("{file_name}.part"));
+        let (final_candidate, mut resumed_bytes) = if part_path.exists() {
+            let size = tokio::fs::metadata(&part_path)
+                .await
+                .map(|meta| meta.len())
+                .unwrap_or(0);
+            (part_path, size)
+        } else {
+            let final_path = unique_path(save_dir, file_name);
+            (
+                save_dir.join(format!(
+                    "{}.part",
+                    final_path.file_name().unwrap_or_default().to_string_lossy()
+                )),
+                0,
+            )
+        };
+        // A stale partial file can be longer than a newly selected source
+        // with the same name. In that case restarting is safer than keeping
+        // an oversized/corrupted result.
+        let mut options = tokio::fs::OpenOptions::new();
+        options.create(true).write(true);
+        if resumed_bytes > expected_size {
+            resumed_bytes = 0;
+            options.truncate(true);
+        } else {
+            options.append(true);
+        }
+        let file = options
+            .open(&final_candidate)
             .await
-            .map_err(|error| format!("create file {final_path:?}: {error}"))?;
+            .map_err(|error| format!("create file {final_candidate:?}: {error}"))?;
         Ok(Self {
             file,
-            display_path: final_path.to_string_lossy().to_string(),
+            display_path: final_candidate.to_string_lossy().to_string(),
+            resumed_bytes,
             #[cfg(target_os = "android")]
             media_uri: None,
             #[cfg(target_os = "android")]
@@ -1062,6 +1397,7 @@ impl ReceiveTarget {
         let ReceiveTarget {
             mut file,
             display_path,
+            resumed_bytes: _,
             #[cfg(target_os = "android")]
             media_uri,
             #[cfg(target_os = "android")]
@@ -1082,6 +1418,28 @@ impl ReceiveTarget {
                 return Err(error);
             }
         }
+
+        // Resume support: ".part" files get their final name on success.
+        #[cfg(not(target_os = "android"))]
+        let display_path = {
+            let path = PathBuf::from(&display_path);
+            if path.extension().and_then(|e| e.to_str()) == Some("part") {
+                let final_name = path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .unwrap_or("file");
+                let final_path = unique_path(path.parent().unwrap_or(Path::new(".")), final_name);
+                match std::fs::rename(&path, &final_path) {
+                    Ok(()) => final_path.to_string_lossy().to_string(),
+                    Err(_) => display_path,
+                }
+            } else {
+                display_path
+            }
+        };
+        // On Android the MediaStore entry is visible already (is_pending is
+        // only used there), so no rename is needed.
+        let _ = &display_path;
         Ok((display_path, open_path))
     }
 
@@ -1699,69 +2057,140 @@ fn mime_type(file_name: &str) -> &'static str {
     }
 }
 
+pub struct SendSecurity {
+    pub connector: TlsConnector,
+    /// Sender's own fingerprint, sent in the HELLO banner.
+    pub fingerprint: String,
+}
+
+/// Entry point for sending one file OR a whole folder. `paths` with a single
+/// folder collapses into that folder; otherwise each path becomes an entry
+/// of one combined session (single confirmation on the receiver).
 pub async fn send_file(
-    path: String,
+    paths: Vec<String>,
     target_ip: String,
     target_port: u16,
     task_id_opt: Option<String>,
     app: AppHandle,
+    security: SendSecurity,
 ) -> Result<String, String> {
-    println!(
-        "send_file request: path={} target={}:{}",
-        path, target_ip, target_port
-    );
-    let source_path = PathBuf::from(&path);
+    if paths.is_empty() {
+        return Err("没有可发送的文件".into());
+    }
+    // Single folder arg -> folder mode handled by existing logic via len()==1.
+    send_session(paths, target_ip, target_port, task_id_opt, app, security).await
+}
 
-    // Android content URIs stay single-file via MediaStore; real paths can be
-    // files or folders (folders stream every contained file in one session).
+async fn send_session(
+    paths: Vec<String>,
+    target_ip: String,
+    target_port: u16,
+    task_id_opt: Option<String>,
+    app: AppHandle,
+    security: SendSecurity,
+) -> Result<String, String> {
+    println!("send_session request: paths={paths:?} target={target_ip}:{target_port}");
+
+    // Collect every concrete SendEntry across all requested paths first.
+    // A single path keeps its own name as root (file or folder). Multiple
+    // paths are grouped under "FlashLAN-<timestamp>" as the batch root.
+    let multi = paths.len() > 1;
+    // Loose files are placed directly into the receiver's default location;
+    // only selections containing at least one folder get a grouping wrapper
+    // ("FlashLAN-<timestamp>") so the folder subtree stays recognizable.
+    let mut any_dir = false;
+
     #[cfg(target_os = "android")]
-    let (root_display, entries, total_size, batch_mode) = if path.starts_with("content://") {
-        let source = open_android_content_uri(&app, &path)?;
-        (
-            source.file_name.clone(),
-            vec![SendEntry {
+    let mut entries: Vec<SendEntry> = Vec::new();
+    #[cfg(target_os = "android")]
+    for path in paths.iter() {
+        if path.starts_with("content://") {
+            let source = open_android_content_uri(&app, path)?;
+            entries.push(SendEntry {
                 absolute_path: PathBuf::new(),
                 relative_path: source.file_name.clone(),
                 display_name: source.file_name.clone(),
                 size: source.file_size,
                 preopened: Some(source.file),
-            }],
-            source.file_size,
-            false,
-        )
-    } else {
-        match collect_send_entries(&source_path).await {
-            Ok((root, entries, total)) => (
-                root,
-                entries,
-                total,
-                tokio::fs::metadata(&source_path)
-                    .await
-                    .map(|m| m.is_dir())
-                    .unwrap_or(false),
-            ),
-            Err(error) => return Err(error),
+            });
+            continue;
         }
-    };
-
-    #[cfg(not(target_os = "android"))]
-    let (root_display, entries, total_size, batch_mode) = {
+        let source_path = PathBuf::from(path);
         if !source_path.exists() {
             return Err(format!("file not found: {path}"));
         }
+        let is_dir = tokio::fs::metadata(&source_path)
+            .await
+            .map(|m| m.is_dir())
+            .unwrap_or(false);
+        any_dir |= is_dir;
         match collect_send_entries(&source_path).await {
-            Ok((root, entries, total)) => (
-                root,
-                entries,
-                total,
-                tokio::fs::metadata(&source_path)
-                    .await
-                    .map(|m| m.is_dir())
-                    .unwrap_or(false),
-            ),
+            Ok((_root, mut list, _total)) => {
+                if multi && is_dir {
+                    let name = source_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("folder")
+                        .to_string();
+                    for entry in &mut list {
+                        entry.relative_path = format!("{name}/{}", entry.relative_path);
+                    }
+                }
+                entries.extend(list);
+            }
             Err(error) => return Err(error),
         }
+    }
+
+    #[cfg(not(target_os = "android"))]
+    let mut entries: Vec<SendEntry> = Vec::new();
+    #[cfg(not(target_os = "android"))]
+    for path in &paths {
+        let source_path = PathBuf::from(path);
+        if !source_path.exists() {
+            return Err(format!("file not found: {path}"));
+        }
+        let is_dir = tokio::fs::metadata(&source_path)
+            .await
+            .map(|m| m.is_dir())
+            .unwrap_or(false);
+        any_dir |= is_dir;
+        match collect_send_entries(&source_path).await {
+            Ok((_root, mut list, _total)) => {
+                if multi && is_dir {
+                    let name = source_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("folder")
+                        .to_string();
+                    for entry in &mut list {
+                        entry.relative_path = format!("{name}/{}", entry.relative_path);
+                    }
+                }
+                entries.extend(list);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    let total_size: u64 = entries.iter().map(|entry| entry.size).sum();
+    // Batch whenever there is more than one concrete file or a single folder.
+    let single_is_dir = tokio::fs::metadata(&paths[0])
+        .await
+        .map(|m| m.is_dir())
+        .unwrap_or(false);
+    let batch_mode = entries.len() > 1 || single_is_dir;
+    let fs_root = if multi && any_dir {
+        format!("FlashLAN-{}", chrono_like_timestamp_short())
+    } else {
+        String::new()
     };
+    let root_display = if multi && !any_dir {
+        format!("{} 个文件", entries.len())
+    } else {
+        fs_root.clone()
+    };
+    let root_display_path = paths[0].clone();
 
     let task_id = task_id_opt.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     clear_cancel(&task_id);
@@ -1783,13 +2212,15 @@ pub async fn send_file(
                 })
                 .collect(),
         );
-        header.root = Some(root_display.clone());
+        // "" means "no wrapper folder": entries land directly in the
+        // receiver's default download location.
+        header.root = Some(fs_root);
     }
 
     let header_json = serde_json::to_string(&header).map_err(|e| e.to_string())? + "\n";
     let addr = format!("{}:{}", target_ip, target_port);
     println!("Connecting to {} with 5s timeout", addr);
-    let mut socket = tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(&addr))
+    let tcp = tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(&addr))
         .await
         .map_err(|_| format!("connect {addr}: timeout after 5s"))?
         .map_err(|e| {
@@ -1797,6 +2228,28 @@ pub async fn send_file(
             eprintln!("{}", msg);
             msg
         })?;
+    let mut socket = match tokio::time::timeout(
+        HANDSHAKE_TIMEOUT,
+        security.connector.connect(
+            rustls::pki_types::ServerName::try_from("flashlan.local".to_string()).unwrap(),
+            tcp,
+        ),
+    )
+    .await
+    {
+        Ok(Ok(tls)) => Wire::TlsClient(Box::new(tls)),
+        Ok(Err(error)) => return Err(format!("TLS 握手失败：{error}")),
+        Err(_) => return Err("TLS 握手超时".into()),
+    };
+    // Mutual identity banners over the encrypted channel.
+    send_hello(&mut socket, &security.fingerprint).await?;
+    let peer_fingerprint =
+        match tokio::time::timeout(HANDSHAKE_TIMEOUT, read_hello(&mut socket)).await {
+            Ok(Ok(fingerprint)) => fingerprint,
+            Ok(Err(error)) => return Err(error),
+            Err(_) => return Err("等待对方身份信息超时".into()),
+        };
+    let _ = peer_fingerprint;
     socket
         .write_all(header_json.as_bytes())
         .await
@@ -1821,18 +2274,28 @@ pub async fn send_file(
         }
         Ok(Ok(line)) => line.trim().to_string(),
     };
-    match response.as_str() {
-        "ACCEPT" => {}
-        "REJECT" | "CANCEL" => {
+    // "ACCEPT" or "ACCEPT <resume-offset>" (single-file resume support).
+    let mut response_parts = response.split_whitespace();
+    let start_offset: u64 = match response_parts.next() {
+        Some("ACCEPT") => response_parts
+            .next()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0),
+        Some("REJECT") | Some("CANCEL") => {
             let message = "对方拒绝了本次传输".to_string();
             emit_send_failed(&app, &task_id, &root_display, &target_ip, message.clone());
             return Err(message);
         }
-        other => {
-            let message = format!("对方响应异常：{other}");
+        _ => {
+            let message = format!("对方响应异常：{response}");
             emit_send_failed(&app, &task_id, &root_display, &target_ip, message.clone());
             return Err(message);
         }
+    };
+    if start_offset > total_size {
+        let message = "对方的续传偏移异常".to_string();
+        emit_send_failed(&app, &task_id, &root_display, &target_ip, message.clone());
+        return Err(message);
     }
 
     println!(
@@ -1847,7 +2310,7 @@ pub async fn send_file(
             total: total_size,
             direction: "send".into(),
             peer: target_ip.clone(),
-            path: path.clone(),
+            path: paths.join(", "),
         },
     );
 
@@ -1859,6 +2322,7 @@ pub async fn send_file(
         total_size,
         batch_mode,
         &target_ip,
+        start_offset,
     )
     .await;
 
@@ -1882,8 +2346,8 @@ pub async fn send_file(
                 TransferResult {
                     task_id: task_id.clone(),
                     file_name: root_display,
-                    path: path.clone(),
-                    open_path: Some(path.clone()),
+                    path: root_display_path.clone(),
+                    open_path: Some(root_display_path.clone()),
                     success: true,
                     message: "sent".into(),
                     direction: "send".into(),
@@ -1913,17 +2377,74 @@ pub async fn send_file(
 /// Stream every entry over the accepted connection, emitting cumulative
 /// progress. Returns once all bytes have been written to the socket.
 #[allow(clippy::too_many_arguments)]
+/// Share clipboard text over an encrypted one-shot connection.
+pub async fn send_text(
+    text: String,
+    target_ip: String,
+    target_port: u16,
+    app: AppHandle,
+    security: SendSecurity,
+) -> Result<(), String> {
+    use base64::Engine as _;
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("文本内容为空".into());
+    }
+    if text.len() > 512 * 1024 {
+        return Err("文本内容过大".into());
+    }
+    let payload = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
+    let addr = format!("{}:{}", target_ip, target_port);
+    let tcp = tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(&addr))
+        .await
+        .map_err(|_| format!("connect {addr}: timeout"))?
+        .map_err(|e| format!("connect {addr}: {e}"))?;
+    let socket = tokio::time::timeout(
+        HANDSHAKE_TIMEOUT,
+        security.connector.connect(
+            rustls::pki_types::ServerName::try_from("flashlan.local".to_string()).unwrap(),
+            tcp,
+        ),
+    )
+    .await
+    .map_err(|_| "TLS 握手超时".to_string())?
+    .map_err(|error| format!("TLS 握手失败：{error}"))?;
+    let mut wire = Wire::TlsClient(Box::new(socket));
+    send_hello(&mut wire, &security.fingerprint).await?;
+    let _peer = tokio::time::timeout(HANDSHAKE_TIMEOUT, read_hello(&mut wire))
+        .await
+        .map_err(|_| "等待对方身份信息超时".to_string())??;
+    wire.write_all(format!("TEXT {payload}\n").as_bytes())
+        .await
+        .map_err(|e| e.to_string())?;
+    wire.flush().await.map_err(|e| e.to_string())?;
+    let ack = tokio::time::timeout(ACK_TIMEOUT, read_line(&mut wire, 16))
+        .await
+        .map_err(|_| "等待文字消息确认超时".to_string())??;
+    if ack.trim() != "OK" {
+        return Err("对方未能接收文字消息".into());
+    }
+    wire.shutdown().await.map_err(|e| e.to_string())?;
+    let _ = app;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn stream_entries(
-    socket: &mut TcpStream,
+    socket: &mut Wire,
     app: &AppHandle,
     task_id: &str,
     entries: Vec<SendEntry>,
     total_size: u64,
     batch_mode: bool,
     target_ip: &str,
+    skip_bytes: u64,
 ) -> Result<(), String> {
     let mut buf = vec![0u8; CHUNK_SIZE];
+    // Resume fast-forward: bytes already held by the receiver are counted as
+    // sent for progress but never written to the wire.
     let mut sent_total: u64 = 0;
+    let mut remaining_skip = skip_bytes;
     let mut last_emit = std::time::Instant::now();
     let mut speed_meter = SpeedMeter::new();
 
@@ -1947,6 +2468,25 @@ async fn stream_entries(
             })?;
             if n == 0 {
                 return Err(format!("源文件在读取中途变短：{}", entry.display_name));
+            }
+            // Resume fast-forward inside a chunk boundary.
+            if remaining_skip > 0 {
+                let skippable = (n as u64).min(remaining_skip);
+                sent_entry += skippable;
+                sent_total += skippable;
+                remaining_skip -= skippable;
+                if skippable == n as u64 {
+                    continue;
+                }
+                let take = &buf[skippable as usize..];
+                socket.write_all(take).await.map_err(|e| {
+                    let msg = format!("write socket: {e}");
+                    eprintln!("{}", msg);
+                    msg
+                })?;
+                sent_entry += take.len() as u64;
+                sent_total += take.len() as u64;
+                continue;
             }
             socket.write_all(&buf[..n]).await.map_err(|e| {
                 let msg = format!("write socket: {e}");

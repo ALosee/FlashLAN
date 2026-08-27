@@ -17,6 +17,7 @@ const respondingTaskId = ref('')
 
 const menus = [
   { label: '传文件', icon: 'lucide:upload', path: '/' },
+  { label: '消息', icon: 'lucide:messages-square', path: '/messages' },
   { label: '附近设备', icon: 'lucide:scan-search', path: '/devices' },
   { label: '传输记录', icon: 'lucide:history', path: '/history' },
   { label: '设置', icon: 'lucide:settings', path: '/settings' },
@@ -237,6 +238,9 @@ onMounted(async () => {
         <div class="mt-4 rounded-xl bg-muted/60 p-3">
           <div class="font-medium truncate">{{ pendingRequest.fileName }}</div>
           <div class="text-xs text-muted-foreground mt-1">
+            <template v-if="pendingRequest.fileCount > 1">
+              共 {{ pendingRequest.fileCount }} 个文件 ·
+            </template>
             {{ formatBytes(pendingRequest.total) }} · 文件将在确认后开始传输
           </div>
         </div>

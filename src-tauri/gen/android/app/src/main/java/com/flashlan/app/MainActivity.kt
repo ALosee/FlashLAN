@@ -7,5 +7,7 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    // Keep the TCP server alive in background; idempotent.
+    TransferForegroundService.start(this)
   }
 }

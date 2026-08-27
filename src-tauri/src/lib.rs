@@ -1,4 +1,5 @@
 mod discovery;
+mod security;
 mod transfer;
 
 use discovery::DeviceInfo;
@@ -93,15 +94,146 @@ async fn test_connection(target_ip: String, target_port: Option<u16>) -> Result<
 }
 
 #[tauri::command]
+async fn verify_peer_fingerprint(
+    target_ip: String,
+    target_port: Option<u16>,
+    fingerprint: String,
+    identity: tauri::State<'_, security::Identity>,
+) -> Result<(), String> {
+    let port = target_port.unwrap_or(discovery::SERVICE_PORT);
+    transfer::verify_peer_fingerprint(
+        target_ip,
+        port,
+        fingerprint,
+        identity.client_connector()?,
+        identity.fingerprint.clone(),
+    )
+    .await
+}
+
+#[tauri::command]
 async fn send_file(
     app: tauri::AppHandle,
-    path: String,
+    path: serde_json::Value,
     target_ip: String,
     target_port: Option<u16>,
     task_id: Option<String>,
+    identity: tauri::State<'_, security::Identity>,
 ) -> Result<String, String> {
+    // Accept both a single string (older callers) and an array of strings so
+    // multi-selection flows through one session / one confirmation dialog.
+    let paths: Vec<String> = match path {
+        serde_json::Value::String(single) => vec![single],
+        serde_json::Value::Array(items) => items
+            .into_iter()
+            .filter_map(|item| item.as_str().map(str::to_string))
+            .collect(),
+        _ => return Err("path 参数格式不正确".into()),
+    };
+    if paths.is_empty() {
+        return Err("没有可发送的文件".into());
+    }
     let port = target_port.unwrap_or(discovery::SERVICE_PORT);
-    transfer::send_file(path, target_ip, port, task_id, app).await
+    let security = transfer::SendSecurity {
+        connector: identity.client_connector()?,
+        fingerprint: identity.fingerprint.clone(),
+    };
+    transfer::send_file(paths, target_ip, port, task_id, app, security).await
+}
+
+// ---------- Pairing / trust commands ----------
+
+/// Fingerprint of this device's certificate (SHA-256 hex).
+#[tauri::command]
+fn get_own_fingerprint(identity: tauri::State<'_, security::Identity>) -> String {
+    identity.fingerprint.clone()
+}
+
+/// List of paired (trusted) devices.
+#[tauri::command]
+fn list_trusted_devices(
+    trust: tauri::State<'_, Arc<security::TrustStore>>,
+) -> Vec<(String, security::TrustedDevice)> {
+    trust.list()
+}
+
+/// Remove a paired device.
+#[tauri::command]
+fn remove_trusted_device(
+    fingerprint: String,
+    trust: tauri::State<'_, Arc<security::TrustStore>>,
+) -> Result<(), String> {
+    trust.remove(&fingerprint)
+}
+
+/// Complete pairing with a peer that has shown its PIN: store its
+/// fingerprint under the given display name.
+#[tauri::command]
+fn trust_device(
+    fingerprint: String,
+    name: String,
+    trust: tauri::State<'_, Arc<security::TrustStore>>,
+) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("设备名称不能为空".to_string());
+    }
+    trust.add(
+        fingerprint.to_lowercase(),
+        security::TrustedDevice {
+            name: name.to_string(),
+            paired_at: now_millis(),
+        },
+    )
+}
+
+/// Share text with a peer over the encrypted channel (fire-and-forget).
+#[tauri::command]
+async fn send_text(
+    app: tauri::AppHandle,
+    text: String,
+    target_ip: String,
+    target_port: Option<u16>,
+    identity: tauri::State<'_, security::Identity>,
+) -> Result<(), String> {
+    let port = target_port.unwrap_or(discovery::SERVICE_PORT);
+    let security = transfer::SendSecurity {
+        connector: identity.client_connector()?,
+        fingerprint: identity.fingerprint.clone(),
+    };
+    transfer::send_text(text, target_ip, port, app, security).await
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+/// QR payload: `flashlan://<ip>:<port>#<fingerprint>` rendered as an SVG.
+/// The scanning side connects to ip:port and verifies the fingerprint the
+/// peer presents in the TLS banner, preventing MITM without manual typing.
+#[tauri::command]
+async fn generate_connect_qr(
+    identity: tauri::State<'_, security::Identity>,
+    settings: tauri::State<'_, SettingsState>,
+) -> Result<String, String> {
+    let info = discovery::get_device_info(&settings.current()?.device_name);
+    let url = format!(
+        "flashlan://{}:{}#{}",
+        info.ip, info.port, identity.fingerprint
+    );
+    use qrcode::{render::svg, QrCode};
+    let code = QrCode::with_error_correction_level(url.as_bytes(), qrcode::EcLevel::M)
+        .map_err(|error| format!("二维码生成失败：{error}"))?;
+    let svg = code
+        .render::<svg::Color>()
+        .dark_color(svg::Color("#000000"))
+        .light_color(svg::Color("#ffffff"))
+        .quiet_zone(true)
+        .build();
+    Ok(svg)
 }
 
 #[tauri::command]
@@ -181,6 +313,11 @@ pub struct ServerListening(pub std::sync::Arc<std::sync::atomic::AtomicBool>);
 pub fn run() {
     let mut builder = tauri::Builder::default();
 
+    #[cfg(target_os = "android")]
+    {
+        builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+    }
+
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(
@@ -254,8 +391,44 @@ pub fn run() {
             let handle = app.handle().clone();
             println!("FlashLAN save_dir: {:?}", transfer_manager.save_dir());
             let listening_flag = app.state::<ServerListening>().0.clone();
+
+            // Security: per-device self-signed certificate + trust store.
+            let identity = match security::Identity::load_or_create(
+                &app.path()
+                    .app_config_dir()
+                    .unwrap_or_else(|_| std::env::temp_dir().join("FlashLAN"))
+                    .join("keys"),
+            ) {
+                Ok(identity) => identity,
+                Err(error) => {
+                    eprintln!("identity init failed: {error}");
+                    return Err(error.into());
+                }
+            };
+            let trust = Arc::new(security::TrustStore::new());
+            trust.bind_path(
+                app.path()
+                    .app_config_dir()
+                    .unwrap_or_else(|_| std::env::temp_dir().join("FlashLAN"))
+                    .join("trusted-devices.json"),
+            );
+            app.manage(trust.clone());
+            // Managed as bare Identity so State<Identity> in commands resolves;
+            // capture fingerprint/TLS acceptor before ownership moves in.
+            let fingerprint = identity.fingerprint.clone();
+            let tls_acceptor = identity.server_acceptor()?;
+            app.manage(identity);
+
             tauri::async_runtime::spawn(async move {
-                match transfer::start_file_server(handle.clone(), transfer_manager).await {
+                match transfer::start_file_server(
+                    handle.clone(),
+                    transfer_manager,
+                    tls_acceptor,
+                    fingerprint,
+                    trust,
+                )
+                .await
+                {
                     Ok(()) => {
                         listening_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                         let _ = handle.emit("server_status", (true, String::new()));
@@ -294,6 +467,7 @@ pub fn run() {
             set_save_path,
             discover_devices,
             test_connection,
+            verify_peer_fingerprint,
             send_file,
             open_file_location,
             respond_transfer_request,
@@ -301,7 +475,13 @@ pub fn run() {
             set_auto_receive,
             cancel_transfer,
             get_server_status,
-            create_text_clipboard_file
+            create_text_clipboard_file,
+            get_own_fingerprint,
+            list_trusted_devices,
+            remove_trusted_device,
+            trust_device,
+            generate_connect_qr,
+            send_text
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
