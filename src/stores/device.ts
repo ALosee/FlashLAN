@@ -142,6 +142,25 @@ export const useDeviceStore = defineStore('device', () => {
     })
   }
 
+  /** Probe manual devices so the UI can show 离线 instead of a fake 在线. */
+  async function refreshManualStatus() {
+    if (!manualDevices.value.length) return
+    await Promise.allSettled(
+      manualDevices.value.map(async device => {
+        try {
+          await invoke('test_connection', {
+            targetIp: device.ip,
+            targetPort: device.port,
+          })
+          device.online = true
+        } catch {
+          device.online = false
+        }
+      }),
+    )
+    rebuildDevices()
+  }
+
   function addManualDevice(targetIp: string, targetPort = 17321) {
     const ip = targetIp.trim()
     const device: Device = {
@@ -175,5 +194,6 @@ export const useDeviceStore = defineStore('device', () => {
     discover,
     testConnection,
     addManualDevice,
+    refreshManualStatus,
   }
 })

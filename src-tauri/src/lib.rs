@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppSettings {
@@ -138,12 +138,71 @@ fn set_auto_receive(
     Ok(())
 }
 
+#[tauri::command]
+fn cancel_transfer(task_id: String) {
+    transfer::request_cancel(&task_id);
+}
+
+/// Whether the TCP file server bound its port successfully at startup.
+#[tauri::command]
+fn get_server_status(server_listening: tauri::State<'_, ServerListening>) -> bool {
+    server_listening
+        .0
+        .load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Persist pasted text as a temp .txt file so it can go through the normal
+/// file send path (Ctrl+V "paste text as file").
+#[tauri::command]
+fn create_text_clipboard_file(text: String) -> Result<String, String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Err("剪贴板内容为空".to_string());
+    }
+    if trimmed.len() > 1024 * 1024 {
+        return Err("粘贴内容过大（超过 1MB）".to_string());
+    }
+    let target = std::env::temp_dir().join(format!("FlashLAN-{}.txt", chrono_like_timestamp()));
+    fs::write(&target, trimmed).map_err(|error| format!("无法写入临时文件：{error}"))?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+fn chrono_like_timestamp() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}", now.as_millis())
+}
+
+#[derive(Default)]
+pub struct ServerListening(pub std::sync::Arc<std::sync::atomic::AtomicBool>);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(
+            |app: &tauri::AppHandle, _args: Vec<String>, _cwd: String| {
+                // Second launch: focus the existing window instead.
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.unminimize();
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            },
+        ));
+    }
+
+    builder = builder
         .manage(transfer::TransferManager::default())
+        .manage(ServerListening::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init());
+
+    builder
         .setup(|app| {
             let config_path = app
                 .path()
@@ -194,12 +253,38 @@ pub fn run() {
             // fallback for older devices or a failed MediaStore operation.
             let handle = app.handle().clone();
             println!("FlashLAN save_dir: {:?}", transfer_manager.save_dir());
+            let listening_flag = app.state::<ServerListening>().0.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = transfer::start_file_server(handle, transfer_manager).await {
-                    eprintln!("file server failed: {e}");
+                match transfer::start_file_server(handle.clone(), transfer_manager).await {
+                    Ok(()) => {
+                        listening_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                        let _ = handle.emit("server_status", (true, String::new()));
+                    }
+                    Err(e) => {
+                        eprintln!("file server failed: {e}");
+                        let _ = handle.emit("server_status", (false, e));
+                    }
                 }
             });
+
+            #[cfg(desktop)]
+            {
+                setup_tray(app.handle())?;
+            }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Desktop: closing the window keeps FlashLAN receiving in the
+            // tray; use the tray menu's quit to fully exit.
+            #[cfg(desktop)]
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
+            }
+            #[cfg(not(desktop))]
+            let _ = (window, event);
         })
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -213,10 +298,70 @@ pub fn run() {
             open_file_location,
             respond_transfer_request,
             get_pending_transfer_requests,
-            set_auto_receive
+            set_auto_receive,
+            cancel_transfer,
+            get_server_status,
+            create_text_clipboard_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Desktop tray: quick access to show/hide the window and quit.
+#[cfg(desktop)]
+fn setup_tray(app: &tauri::AppHandle) -> Result<(), tauri::Error> {
+    use tauri::{
+        menu::{Menu, MenuItem},
+        tray::{TrayIconBuilder, TrayIconEvent},
+    };
+
+    let open_item = MenuItem::with_id(app, "open", "打开 FlashLAN", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
+
+    TrayIconBuilder::with_id("flashlan-tray")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .tooltip("FlashLAN - 局域网快传")
+        .icon(
+            app.default_window_icon()
+                .cloned()
+                .ok_or_else(|| tauri::Error::AssetNotFound("default window icon".into()))?,
+        )
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "open" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+            }
+            "quit" => {
+                app.exit(0);
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: tauri::tray::MouseButton::Left,
+                    button_state: tauri::tray::MouseButtonState::Up,
+                    ..
+                }
+            ) {
+                if let Some(window) = tray.app_handle().get_webview_window("main") {
+                    if window.is_visible().unwrap_or(false) {
+                        let _ = window.hide();
+                    } else {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+            }
+        })
+        .build(app)?;
+    Ok(())
 }
 
 fn default_save_dir(app: &tauri::AppHandle) -> PathBuf {
@@ -230,6 +375,7 @@ fn default_save_dir(app: &tauri::AppHandle) -> PathBuf {
             .join("FlashLAN");
     }
 
+    #[cfg(not(target_os = "android"))]
     dirs::download_dir()
         .or_else(|| app.path().download_dir().ok())
         .or_else(|| app.path().app_data_dir().ok())

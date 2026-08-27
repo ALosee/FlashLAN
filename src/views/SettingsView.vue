@@ -4,6 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { useTheme } from '@soybeanjs/ui'
 import type { ThemeModePreference } from '@soybeanjs/theme'
+import { version as appVersion } from '../../package.json'
 import { SCard } from '@/ui/components/card'
 import { SButton } from '@/ui/components/button'
 import { SInput } from '@/ui/components/input'
@@ -338,7 +339,7 @@ onMounted(loadSettings)
 
     <div class="text-xs text-muted-foreground flex items-center gap-2">
       <SIcon icon="lucide:info" class="text-xs" />
-      FlashLAN v0.1.0 · Tauri 2 · Vue 3 · SoybeanUI · UnoCSS · mDNS
+      FlashLAN v{{ appVersion }} · Tauri 2 · Vue 3 · SoybeanUI · UnoCSS · mDNS
     </div>
   </div>
 </template>

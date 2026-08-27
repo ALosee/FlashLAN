@@ -2,6 +2,11 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from '@tauri-apps/plugin-notification'
 import { isTauri } from '@/utils/tauri'
 
 export interface TransferTask {
@@ -18,6 +23,8 @@ export interface TransferTask {
   direction: 'send' | 'receive'
   targetDevice: string
   targetIp: string
+  /** Epoch ms when the task was first seen. */
+  createdAt?: number
   error?: string
 }
 
@@ -146,6 +153,7 @@ export const useTransferStore = defineStore('transfer', () => {
       direction: payload.direction,
       targetDevice: payload.peer,
       targetIp: payload.peer,
+      createdAt: Date.now(),
     }
     tasks.value.unshift(task)
     return task
@@ -256,11 +264,44 @@ export const useTransferStore = defineStore('transfer', () => {
         task.progress = event.payload.success ? 100 : task.progress
         task.filePath = event.payload.path || task.filePath
         task.fileOpenPath = event.payload.open_path || task.fileOpenPath
+        task.createdAt = task.createdAt || Date.now()
         task.error = event.payload.success ? undefined : event.payload.message
+        if (isTauri() && event.payload.success && event.payload.direction === 'receive') {
+          void notifyIncoming(task.fileName)
+        }
       })
     } catch {
       isListening.value = false
     }
+  }
+
+  async function notifyIncoming(fileName: string) {
+    try {
+      let granted = await isPermissionGranted()
+      if (!granted) {
+        granted = (await requestPermission()) === 'granted'
+      }
+      if (granted) {
+        sendNotification({ title: 'FlashLAN', body: `已接收文件：${fileName}` })
+      }
+    } catch {
+      // Notifications are best-effort; never break the transfer flow.
+    }
+  }
+
+  /** Ask the backend to abort an in-flight transfer. */
+  async function cancelTask(taskId: string) {
+    const task = tasks.value.find(item => item.id === taskId)
+    if (!task || (task.status !== 'transferring' && task.status !== 'pending')) return
+    if (isTauri()) {
+      try {
+        await invoke('cancel_transfer', { taskId })
+      } catch (error) {
+        console.error('[FlashLAN] cancel_transfer failed', error)
+      }
+    }
+    task.status = 'failed'
+    task.error = '传输已取消'
   }
 
   async function sendFile(filePath: string, targetIp: string, targetPort?: number) {
@@ -280,6 +321,7 @@ export const useTransferStore = defineStore('transfer', () => {
         direction: 'send',
         targetDevice: targetIp,
         targetIp,
+        createdAt: Date.now(),
       }
       tasks.value.unshift(task)
       let p = 0
@@ -312,6 +354,7 @@ export const useTransferStore = defineStore('transfer', () => {
       direction: 'send',
       targetDevice: targetIp,
       targetIp,
+      createdAt: Date.now(),
     }
     tasks.value.unshift(task)
     try {
@@ -346,5 +389,6 @@ export const useTransferStore = defineStore('transfer', () => {
     respondToRequest,
     setAutoReceive,
     sendFile,
+    cancelTask,
   }
 })

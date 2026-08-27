@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!--
+    Android adaptive-icon FOREGROUND layer.
+    The full-bleed square gradient lets the launcher mask shape the corners;
+    the artwork is scaled toward the center so it stays inside the safe zone
+    (a circle of roughly 66% diameter) and never overflows the mask.
+    Companion background color layer: res/values/ic_launcher_background.xml.
+  -->
+  <defs>
+    <linearGradient id="background" x1="120" y1="80" x2="900" y2="950" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C73FF" />
+      <stop offset="1" stop-color="#4F46D8" />
+    </linearGradient>
+    <linearGradient id="node-a" x1="150" y1="160" x2="380" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A5F3FC" />
+      <stop offset="1" stop-color="#67E8F9" />
+    </linearGradient>
+    <linearGradient id="node-b" x1="650" y1="660" x2="880" y2="880" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F0ABFC" />
+      <stop offset="1" stop-color="#C4B5FD" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#background)" />
+
+  <g transform="translate(512 512) scale(0.72) translate(-512 -512)">
+    <path
+      d="M282 338C328 252 416 202 515 202"
+      fill="none"
+      stroke="#E0E7FF"
+      stroke-linecap="round"
+      stroke-width="30"
+      opacity=".48"
+    />
+    <path
+      d="M742 686C696 772 608 822 509 822"
+      fill="none"
+      stroke="#E0E7FF"
+      stroke-linecap="round"
+      stroke-width="30"
+      opacity=".48"
+    />
+    <circle cx="246" cy="386" r="58" fill="#4338CA" opacity=".72" />
+    <circle cx="246" cy="386" r="31" fill="url(#node-a)" />
+    <circle cx="778" cy="638" r="58" fill="#4338CA" opacity=".72" />
+    <circle cx="778" cy="638" r="31" fill="url(#node-b)" />
+
+    <path d="M566 116 294 517h202l-73 391 333-498H558z" fill="#FFFFFF" />
+    <path d="m566 116-53 327h143l-233 349 73-275H352z" fill="#EEF2FF" opacity=".9" />
+  </g>
+</svg>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import { SCard } from '@/ui/components/card'
 import { SButton } from '@/ui/components/button'
 import { SIcon } from '@/ui/components/icon'
@@ -16,8 +16,19 @@ function platformLabel(platform: string) {
   return platform
 }
 
+let statusTimer: ReturnType<typeof setInterval> | undefined
+
 onMounted(() => {
   deviceStore.discover()
+  void deviceStore.refreshManualStatus()
+  // 手动设备没有 mDNS 在线通知，用定时探测保持状态新鲜。
+  statusTimer = setInterval(() => {
+    void deviceStore.refreshManualStatus()
+  }, 15000)
+})
+
+onBeforeUnmount(() => {
+  if (statusTimer) clearInterval(statusTimer)
 })
 </script>
 
@@ -100,20 +111,35 @@ onMounted(() => {
             </div>
           </div>
           <span
-            class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-success/10 px-2 py-1 text-[10px] font-medium text-success"
+            class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-medium"
+            :class="
+              d.online === false ? 'bg-muted text-muted-foreground' : 'bg-success/10 text-success'
+            "
           >
-            <span class="size-1.5 rounded-full bg-success" />
-            在线
+            <span
+              class="size-1.5 rounded-full"
+              :class="d.online === false ? 'bg-muted-foreground' : 'bg-success'"
+            />
+            {{ d.online === false ? '离线' : '在线' }}
           </span>
         </div>
         <div
           class="mt-3 flex items-center justify-between border-t border-border/70 dark:border-border/10 pt-3"
         >
           <span class="text-[11px] text-muted-foreground">局域网设备</span>
-          <span class="flex items-center gap-1 text-[11px] text-success">
+          <span v-if="d.online !== false" class="flex items-center gap-1 text-[11px] text-success">
             <SIcon icon="lucide:wifi" class="text-xs" />
             连接稳定
           </span>
+          <button
+            v-else
+            type="button"
+            class="flex items-center gap-1 text-[11px] text-primary hover:underline"
+            @click="deviceStore.testConnection(d.ip, d.port).catch(() => {})"
+          >
+            <SIcon icon="lucide:wifi-off" class="text-xs" />
+            点击重试连接
+          </button>
         </div>
       </SCard>
     </div>

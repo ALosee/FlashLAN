@@ -1,14 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::{IpAddr, SocketAddr},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex, RwLock,
+        Arc, LazyLock, Mutex, RwLock,
     },
     time::Duration,
 };
+
+// Alias kept short; std Mutex guards are used briefly.
+use std::sync::Mutex as StdMutex;
 #[cfg(target_os = "android")]
 use tauri::Manager;
 use tauri::{AppHandle, Emitter};
@@ -58,6 +61,59 @@ pub struct TransferRequest {
     pub file_name: String,
     pub total: u64,
     pub peer: String,
+}
+
+/// Cancellation registry: task ids queued for cancellation from the UI.
+static CANCELLED_TASKS: LazyLock<StdMutex<HashSet<String>>> =
+    LazyLock::new(|| StdMutex::new(HashSet::new()));
+
+pub fn request_cancel(task_id: &str) {
+    if let Ok(mut set) = CANCELLED_TASKS.lock() {
+        set.insert(task_id.to_string());
+    }
+}
+
+fn is_cancelled(task_id: &str) -> bool {
+    CANCELLED_TASKS
+        .lock()
+        .map(|set| set.contains(task_id))
+        .unwrap_or(false)
+}
+
+fn clear_cancel(task_id: &str) {
+    if let Ok(mut set) = CANCELLED_TASKS.lock() {
+        set.remove(task_id);
+    }
+}
+
+const CANCELLED_MESSAGE: &str = "传输已取消";
+
+/// Tracks transfer speed over a short rolling window instead of the whole
+/// session average, so UI speed reacts to actual throughput changes.
+struct SpeedMeter {
+    last_tick: std::time::Instant,
+    last_bytes: u64,
+    speed: f64,
+}
+
+impl SpeedMeter {
+    fn new() -> Self {
+        Self {
+            last_tick: std::time::Instant::now(),
+            last_bytes: 0,
+            speed: 0.0,
+        }
+    }
+
+    fn tick(&mut self, bytes: u64, force: bool) -> f64 {
+        let elapsed = self.last_tick.elapsed().as_secs_f64();
+        if force || elapsed >= 0.5 {
+            self.speed = (bytes - self.last_bytes) as f64 / elapsed.max(0.001);
+            self.last_bytes = bytes;
+            self.last_tick = std::time::Instant::now();
+        }
+        self.speed
+    }
 }
 
 #[derive(Clone, Default)]
@@ -161,6 +217,8 @@ pub const TRANSFER_PORT: u16 = 17321;
 const CHUNK_SIZE: usize = 64 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const CONNECTION_TEST_TIMEOUT: Duration = Duration::from_secs(3);
+/// How long the sender waits for the receiver's final OK/REJECT ack.
+const ACK_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Header sent before file bytes: JSON + newline
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,6 +226,103 @@ pub struct FileHeader {
     pub file_name: String,
     pub file_size: u64,
     pub task_id: String,
+    /// Present when the sender streams a folder: each entry keeps its path
+    /// relative to the transfer root plus the exact byte size.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files: Option<Vec<BatchFileEntry>>,
+    /// Display name of the transferred folder root in batch mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchFileEntry {
+    pub path: String,
+    pub size: u64,
+}
+
+/// A single concrete file inside a send session.
+struct SendEntry {
+    absolute_path: PathBuf,
+    relative_path: String,
+    display_name: String,
+    size: u64,
+    /// Already-opened source (Android content URIs cannot be re-opened by
+    /// path), otherwise the file is opened lazily from `absolute_path`.
+    preopened: Option<std::fs::File>,
+}
+
+async fn collect_send_entries(path: &Path) -> Result<(String, Vec<SendEntry>, u64), String> {
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .map_err(|e| format!("无法读取文件信息：{e}"))?;
+    let root_display = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("folder")
+        .to_string();
+
+    if metadata.is_file() {
+        let name = root_display.clone();
+        return Ok((
+            name,
+            vec![SendEntry {
+                absolute_path: path.to_path_buf(),
+                relative_path: root_display.clone(),
+                display_name: root_display,
+                size: metadata.len(),
+                preopened: None,
+            }],
+            metadata.len(),
+        ));
+    }
+
+    // Folder: walk recursively and keep files only (empty dirs are skipped).
+    let mut entries: Vec<SendEntry> = Vec::new();
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let mut read_dir = tokio::fs::read_dir(&dir)
+            .await
+            .map_err(|e| format!("无法读取文件夹 {dir:?}：{e}"))?;
+        while let Some(item) = read_dir
+            .next_entry()
+            .await
+            .map_err(|e| format!("遍历文件夹失败：{e}"))?
+        {
+            let child_path = item.path();
+            let child_meta = item
+                .metadata()
+                .await
+                .map_err(|e| format!("无法读取文件信息：{e}"))?;
+            if child_meta.is_dir() {
+                stack.push(child_path);
+                continue;
+            }
+            if !child_meta.is_file() {
+                continue;
+            }
+            let relative = child_path
+                .strip_prefix(path)
+                .unwrap_or(&child_path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let display = format!("{root_display}/{relative}");
+            entries.push(SendEntry {
+                absolute_path: child_path,
+                relative_path: relative.clone(),
+                display_name: display,
+                size: child_meta.len(),
+                preopened: None,
+            });
+        }
+    }
+
+    if entries.is_empty() {
+        return Err("文件夹为空，没有可发送的文件".into());
+    }
+    entries.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    let total = entries.iter().map(|entry| entry.size).sum();
+    Ok((root_display, entries, total))
 }
 
 pub async fn test_connection(target_ip: String, target_port: u16) -> Result<(), String> {
@@ -257,8 +412,8 @@ async fn handle_incoming(
     })?;
     let file_name = safe_file_name(&header.file_name);
 
-    let accepted = if manager.auto_receive() {
-        true
+    let (accepted, declined_reason) = if manager.auto_receive() {
+        (true, None)
     } else {
         let request = TransferRequest {
             task_id: header.task_id.clone(),
@@ -269,15 +424,21 @@ async fn handle_incoming(
         let receiver = manager.register_request(request.clone())?;
         let _ = app.emit("transfer_request", request);
         match tokio::time::timeout(REQUEST_TIMEOUT, receiver).await {
-            Ok(Ok(accepted)) => accepted,
-            Ok(Err(_)) => false,
-            Err(_) => false,
+            Ok(Ok(accepted)) => {
+                if accepted {
+                    (true, None)
+                } else {
+                    (false, Some("对方拒绝了本次接收".to_string()))
+                }
+            }
+            Ok(Err(_)) => (false, Some("确认通道已关闭，自动拒绝".to_string())),
+            Err(_) => (false, Some("等待确认超时（60 秒），已自动拒绝".to_string())),
         }
     };
 
     if !accepted {
         manager.cancel_request(&header.task_id);
-        let message = "接收端拒绝了文件或等待确认超时".to_string();
+        let message = declined_reason.unwrap_or_else(|| "对方拒绝了本次接收".to_string());
         let _ = app.emit(
             "transfer_complete",
             TransferResult {
@@ -286,13 +447,33 @@ async fn handle_incoming(
                 path: String::new(),
                 open_path: None,
                 success: false,
-                message,
+                message: message.clone(),
                 direction: "receive".into(),
                 peer,
             },
         );
         let _ = socket.write_all(b"REJECT\n").await;
         return Ok(());
+    }
+
+    clear_cancel(&header.task_id);
+
+    // Batch mode restores the original folder structure; on Android every
+    // file goes into the public Download/FlashLAN/<root>/ collection.
+    if let Some(batch_files) = header.files.clone() {
+        let root_name = safe_file_name(header.root.as_deref().unwrap_or(&file_name));
+        return receive_batch(
+            socket,
+            app,
+            peer,
+            header.task_id,
+            root_name,
+            batch_files,
+            header.file_size,
+            file_name,
+            save_dir,
+        )
+        .await;
     }
 
     let mut target = match ReceiveTarget::create(&app, &save_dir, &file_name).await {
@@ -330,14 +511,29 @@ async fn handle_incoming(
             path: target.display_path.clone(),
         },
     );
-    println!("Receiving {} into {}", file_name, target.display_path);
-    println!("File created, start receiving");
     let mut received: u64 = 0;
     let total = header.file_size;
     let mut buf = vec![0u8; CHUNK_SIZE];
-    let start = std::time::Instant::now();
     let mut last_emit = std::time::Instant::now();
+    let mut speed_meter = SpeedMeter::new();
     loop {
+        if is_cancelled(&header.task_id) {
+            target.discard().await;
+            let _ = app.emit(
+                "transfer_complete",
+                TransferResult {
+                    task_id: header.task_id.clone(),
+                    file_name: file_name.clone(),
+                    path: String::new(),
+                    open_path: None,
+                    success: false,
+                    message: CANCELLED_MESSAGE.into(),
+                    direction: "receive".into(),
+                    peer: peer.clone(),
+                },
+            );
+            return Ok(());
+        }
         if total == 0 {
             break;
         }
@@ -379,12 +575,7 @@ async fn handle_incoming(
         } else {
             0.0
         };
-        let elapsed = start.elapsed().as_secs_f64();
-        let speed = if elapsed > 0.0 {
-            received as f64 / elapsed
-        } else {
-            0.0
-        };
+        let speed = speed_meter.tick(received, received == total);
         if last_emit.elapsed().as_millis() > 100 || received == total {
             let _ = app.emit(
                 "transfer_progress",
@@ -475,6 +666,332 @@ fn safe_file_name(file_name: &str) -> String {
         .filter(|name| !name.is_empty() && *name != "." && *name != "..")
         .unwrap_or("file")
         .to_string()
+}
+
+/// Like [`safe_file_name`] but keeps inner path structure, refusing any
+/// traversal components so remote entries cannot escape the target dir.
+fn safe_relative_path(relative: &str) -> Option<PathBuf> {
+    let normalized = relative.replace('\\', "/");
+    let mut result = PathBuf::new();
+    for component in normalized.split('/') {
+        match component {
+            "" | "." => continue,
+            ".." => return None,
+            part => {
+                let safe = safe_file_name(part);
+                if safe == "file" && part != "file" {
+                    // Component fully sanitized away; reject to be safe.
+                    if part.trim().is_empty() || part.contains(['/', '\\']) {
+                        return None;
+                    }
+                }
+                result.push(safe);
+            }
+        }
+    }
+    if result.as_os_str().is_empty() {
+        None
+    } else {
+        Some(result)
+    }
+}
+
+/// Pick a non-existing folder name by appending `_1`, `_2`, ... when needed.
+fn unique_dir(parent: &Path, name: &str) -> PathBuf {
+    let original = parent.join(name);
+    if !original.exists() {
+        return original;
+    }
+    let mut counter = 1;
+    loop {
+        let candidate = parent.join(format!("{name}_{counter}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+        counter += 1;
+    }
+}
+
+/// Destination for one incoming file of a batch transfer: the public
+/// Downloads collection via MediaStore (preferred, Android 10+) or the
+/// visible folder tree under the configured save dir as a fallback.
+struct BatchSink {
+    file: tokio::fs::File,
+    fs_path: Option<PathBuf>,
+    #[cfg(target_os = "android")]
+    media_uri: Option<String>,
+}
+
+impl BatchSink {
+    async fn complete(mut self, app: &AppHandle) -> Result<(), String> {
+        #[cfg(not(target_os = "android"))]
+        let _ = app;
+        self.file.flush().await.map_err(|e| e.to_string())?;
+        self.file.sync_all().await.map_err(|e| e.to_string())?;
+        drop(self.file);
+        self.fs_path = None;
+        #[cfg(target_os = "android")]
+        if let Some(uri) = self.media_uri.take() {
+            // Make the finished file visible outside the app immediately.
+            if let Err(error) = finalize_media_store_file(app, uri.clone()) {
+                let _ = delete_media_store_file(app, uri);
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
+    async fn abort(mut self, app: &AppHandle) {
+        #[cfg(not(target_os = "android"))]
+        let _ = app;
+        drop(self.file);
+        #[cfg(target_os = "android")]
+        if let Some(uri) = self.media_uri.take() {
+            let _ = delete_media_store_file(app, uri);
+        }
+        if let Some(path) = self.fs_path.take() {
+            let _ = tokio::fs::remove_file(&path).await;
+        }
+    }
+
+    async fn from_fallback(
+        root_dir: &Path,
+        rel_path: &Path,
+        file_name: &str,
+    ) -> Result<Self, String> {
+        let target_dir = match rel_path.parent() {
+            Some(parent) => {
+                let dir = root_dir.join(parent);
+                tokio::fs::create_dir_all(&dir)
+                    .await
+                    .map_err(|e| format!("无法创建子目录 {dir:?}：{e}"))?;
+                dir
+            }
+            None => root_dir.to_path_buf(),
+        };
+        let final_path = unique_path(&target_dir, file_name);
+        let file = tokio::fs::File::create(&final_path)
+            .await
+            .map_err(|e| format!("创建文件失败 {final_path:?}：{e}"))?;
+        Ok(Self {
+            file,
+            fs_path: Some(final_path),
+            #[cfg(target_os = "android")]
+            media_uri: None,
+        })
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn receive_batch(
+    mut socket: TcpStream,
+    app: Arc<AppHandle>,
+    peer: String,
+    task_id: String,
+    root_name: String,
+    batch_files: Vec<BatchFileEntry>,
+    total: u64,
+    display_name: String,
+    save_dir: PathBuf,
+) -> Result<(), String> {
+    clear_cancel(&task_id);
+
+    // Where the user will find the folder afterwards.
+    #[cfg(target_os = "android")]
+    let location = format!("Download/FlashLAN/{root_name}/");
+    #[cfg(not(target_os = "android"))]
+    let location = {
+        let _ = &save_dir;
+        unique_dir(&save_dir, &root_name)
+            .to_string_lossy()
+            .to_string()
+    };
+
+    let _ = socket.write_all(b"ACCEPT\n").await;
+    let _ = app.emit(
+        "transfer_started",
+        TransferStarted {
+            task_id: task_id.clone(),
+            file_name: display_name.clone(),
+            total,
+            direction: "receive".into(),
+            peer: peer.clone(),
+            path: location.clone(),
+        },
+    );
+
+    let mut received_total: u64 = 0;
+    let mut buf = vec![0u8; CHUNK_SIZE];
+    let mut last_emit = std::time::Instant::now();
+    let mut speed_meter = SpeedMeter::new();
+
+    for entry in &batch_files {
+        if is_cancelled(&task_id) {
+            emit_receive_failed(
+                &app,
+                &task_id,
+                &display_name,
+                &peer,
+                CANCELLED_MESSAGE.into(),
+            );
+            return Ok(());
+        }
+        let Some(rel_path) = safe_relative_path(&entry.path) else {
+            let message = format!("对方发送了非法路径：{}", entry.path);
+            emit_receive_failed(&app, &task_id, &display_name, &peer, message);
+            return Ok(());
+        };
+        let name_part = rel_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("file")
+            .to_string();
+        #[cfg(target_os = "android")]
+        let rel_dir = rel_path
+            .parent()
+            .map(|parent| parent.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+
+        // Public Downloads (MediaStore) first; fall back to app storage only
+        // when that fails so very old devices still receive the files.
+        #[cfg(target_os = "android")]
+        let sink = match create_media_store_file_at(
+            &app,
+            &name_part,
+            &if rel_dir.is_empty() {
+                format!("Download/FlashLAN/{root_name}/")
+            } else {
+                format!("Download/FlashLAN/{root_name}/{rel_dir}/")
+            },
+        ) {
+            Ok((file, uri)) => BatchSink {
+                file: tokio::fs::File::from_std(file),
+                fs_path: None,
+                media_uri: Some(uri),
+            },
+            Err(error) => {
+                eprintln!("MediaStore batch fallback: {error}");
+                let fallback_root = unique_dir(&save_dir, &root_name);
+                match BatchSink::from_fallback(&fallback_root, &rel_path, &name_part).await {
+                    Ok(sink) => sink,
+                    // from_fallback owns partial-file cleanup via BatchSink.
+                    Err(create_error) => return Err(create_error),
+                }
+            }
+        };
+
+        #[cfg(not(target_os = "android"))]
+        let sink = {
+            let root_dir = unique_dir(&save_dir, &root_name);
+            BatchSink::from_fallback(&root_dir, &rel_path, &name_part).await?
+        };
+
+        let mut out = sink;
+        let mut received_entry: u64 = 0;
+        while received_entry < entry.size {
+            if is_cancelled(&task_id) {
+                out.abort(&app).await;
+                emit_receive_failed(
+                    &app,
+                    &task_id,
+                    &display_name,
+                    &peer,
+                    CANCELLED_MESSAGE.into(),
+                );
+                return Ok(());
+            }
+            let want = (entry.size - received_entry).min(CHUNK_SIZE as u64) as usize;
+            let n = match socket.read(&mut buf[..want]).await {
+                Ok(n) => n,
+                Err(error) => {
+                    out.abort(&app).await;
+                    return Err(error.to_string());
+                }
+            };
+            if n == 0 {
+                out.abort(&app).await;
+                let message = format!("connection closed after {received_total}/{total} bytes");
+                emit_receive_failed(&app, &task_id, &display_name, &peer, message.clone());
+                return Err(message);
+            }
+            if let Err(error) = out.file.write_all(&buf[..n]).await {
+                out.abort(&app).await;
+                return Err(error.to_string());
+            }
+            received_entry += n as u64;
+            received_total += n as u64;
+
+            let progress = if total > 0 {
+                (received_total as f64 / total as f64) * 100.0
+            } else {
+                0.0
+            };
+            let speed = speed_meter.tick(received_total, received_total == total);
+            if last_emit.elapsed().as_millis() > 100 || received_total == total {
+                let _ = app.emit(
+                    "transfer_progress",
+                    TransferProgress {
+                        task_id: task_id.clone(),
+                        file_name: name_part.clone(),
+                        progress,
+                        speed,
+                        transferred: received_total,
+                        total,
+                        direction: "receive".into(),
+                        peer: peer.clone(),
+                    },
+                );
+                last_emit = std::time::Instant::now();
+            }
+        }
+        if let Err(error) = out.complete(&app).await {
+            let message = format!("保存文件失败：{error}");
+            emit_receive_failed(&app, &task_id, &display_name, &peer, message.clone());
+            return Err(message);
+        }
+    }
+
+    let ack_task_id = task_id;
+    clear_cancel(&ack_task_id);
+    let ack_display = display_name;
+    let ack_peer = peer;
+    let _ = app.emit(
+        "transfer_complete",
+        TransferResult {
+            task_id: ack_task_id,
+            file_name: ack_display,
+            path: location,
+            open_path: None,
+            success: true,
+            message: "received".into(),
+            direction: "receive".into(),
+            peer: ack_peer,
+        },
+    );
+    let _ = socket.write_all(b"OK\n").await;
+    Ok(())
+}
+
+fn emit_receive_failed(
+    app: &AppHandle,
+    task_id: &str,
+    file_name: &str,
+    peer: &str,
+    message: String,
+) {
+    let _ = app.emit(
+        "transfer_complete",
+        TransferResult {
+            task_id: task_id.to_string(),
+            file_name: file_name.to_string(),
+            path: String::new(),
+            open_path: None,
+            success: false,
+            message,
+            direction: "receive".into(),
+            peer: peer.to_string(),
+        },
+    );
 }
 
 fn unique_path(save_dir: &Path, file_name: &str) -> PathBuf {
@@ -779,26 +1296,29 @@ fn media_store_values<'a>(
     env: &mut jni::JNIEnv<'a>,
     file_name: &str,
     pending: bool,
+    relative_dir: &str,
 ) -> Result<jni::objects::JObject<'a>, String> {
     let values = env
         .new_object("android/content/ContentValues", "()V", &[])
         .map_err(|error| error.to_string())?;
     put_string(env, &values, "_display_name", file_name)?;
     put_string(env, &values, "mime_type", mime_type(file_name))?;
-    put_string(env, &values, "relative_path", "Download/FlashLAN/")?;
+    put_string(env, &values, "relative_path", relative_dir)?;
     put_int(env, &values, "is_pending", if pending { 1 } else { 0 })?;
     Ok(values)
 }
 
 #[cfg(target_os = "android")]
-fn create_media_store_file(
+fn create_media_store_file_at(
     app: &AppHandle,
     file_name: &str,
+    relative_dir: &str,
 ) -> Result<(std::fs::File, String), String> {
     use jni::objects::JString;
     use std::os::fd::FromRawFd;
 
     let file_name = file_name.to_string();
+    let relative_dir = relative_dir.to_string();
     run_android_jni(app, move |env, activity| {
         let version = env
             .find_class("android/os/Build$VERSION")
@@ -820,7 +1340,7 @@ fn create_media_store_file(
             .map_err(|error| error.to_string())?
             .l()
             .map_err(|error| error.to_string())?;
-        let values = media_store_values(env, &file_name, true)?;
+        let values = media_store_values(env, &file_name, true, &relative_dir)?;
         let resolver = env
             .call_method(
                 activity,
@@ -878,6 +1398,14 @@ fn create_media_store_file(
         let file = unsafe { std::fs::File::from_raw_fd(fd) };
         Ok((file, uri_string))
     })
+}
+
+#[cfg(target_os = "android")]
+fn create_media_store_file(
+    app: &AppHandle,
+    file_name: &str,
+) -> Result<(std::fs::File, String), String> {
+    create_media_store_file_at(app, file_name, "Download/FlashLAN/")
 }
 
 #[cfg(target_os = "android")]
@@ -1178,72 +1706,86 @@ pub async fn send_file(
     task_id_opt: Option<String>,
     app: AppHandle,
 ) -> Result<String, String> {
-    use std::path::Path;
     println!(
         "send_file request: path={} target={}:{}",
         path, target_ip, target_port
     );
-    let (mut file, file_name, file_size) = {
-        #[cfg(target_os = "android")]
-        if path.starts_with("content://") {
-            let source = open_android_content_uri(&app, &path)?;
-            (
-                tokio::fs::File::from_std(source.file),
-                source.file_name,
-                source.file_size,
-            )
-        } else {
-            let p = Path::new(&path);
-            if !p.exists() {
-                let msg = format!("file not found: {path}");
-                eprintln!("{}", msg);
-                return Err(msg);
-            }
-            let metadata = tokio::fs::metadata(p).await.map_err(|e| e.to_string())?;
-            if !metadata.is_file() {
-                return Err("only files supported in MVP, folders TODO".into());
-            }
-            let file_name = p
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("file")
-                .to_string();
-            (
-                tokio::fs::File::open(p).await.map_err(|e| e.to_string())?,
-                file_name,
-                metadata.len(),
-            )
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            let p = Path::new(&path);
-            if !p.exists() {
-                let msg = format!("file not found: {path}");
-                eprintln!("{}", msg);
-                return Err(msg);
-            }
-            let metadata = tokio::fs::metadata(p).await.map_err(|e| e.to_string())?;
-            if !metadata.is_file() {
-                return Err("only files supported in MVP, folders TODO".into());
-            }
-            let file_name = p
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("file")
-                .to_string();
-            (
-                tokio::fs::File::open(p).await.map_err(|e| e.to_string())?,
-                file_name,
-                metadata.len(),
-            )
+    let source_path = PathBuf::from(&path);
+
+    // Android content URIs stay single-file via MediaStore; real paths can be
+    // files or folders (folders stream every contained file in one session).
+    #[cfg(target_os = "android")]
+    let (root_display, entries, total_size, batch_mode) = if path.starts_with("content://") {
+        let source = open_android_content_uri(&app, &path)?;
+        (
+            source.file_name.clone(),
+            vec![SendEntry {
+                absolute_path: PathBuf::new(),
+                relative_path: source.file_name.clone(),
+                display_name: source.file_name.clone(),
+                size: source.file_size,
+                preopened: Some(source.file),
+            }],
+            source.file_size,
+            false,
+        )
+    } else {
+        match collect_send_entries(&source_path).await {
+            Ok((root, entries, total)) => (
+                root,
+                entries,
+                total,
+                tokio::fs::metadata(&source_path)
+                    .await
+                    .map(|m| m.is_dir())
+                    .unwrap_or(false),
+            ),
+            Err(error) => return Err(error),
         }
     };
+
+    #[cfg(not(target_os = "android"))]
+    let (root_display, entries, total_size, batch_mode) = {
+        if !source_path.exists() {
+            return Err(format!("file not found: {path}"));
+        }
+        match collect_send_entries(&source_path).await {
+            Ok((root, entries, total)) => (
+                root,
+                entries,
+                total,
+                tokio::fs::metadata(&source_path)
+                    .await
+                    .map(|m| m.is_dir())
+                    .unwrap_or(false),
+            ),
+            Err(error) => return Err(error),
+        }
+    };
+
     let task_id = task_id_opt.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let header = FileHeader {
-        file_name: file_name.clone(),
-        file_size,
+    clear_cancel(&task_id);
+
+    let mut header = FileHeader {
+        file_name: root_display.clone(),
+        file_size: total_size,
         task_id: task_id.clone(),
+        files: None,
+        root: None,
     };
+    if batch_mode {
+        header.files = Some(
+            entries
+                .iter()
+                .map(|entry| BatchFileEntry {
+                    path: entry.relative_path.clone(),
+                    size: entry.size,
+                })
+                .collect(),
+        );
+        header.root = Some(root_display.clone());
+    }
+
     let header_json = serde_json::to_string(&header).map_err(|e| e.to_string())? + "\n";
     let addr = format!("{}:{}", target_ip, target_port);
     println!("Connecting to {} with 5s timeout", addr);
@@ -1255,11 +1797,6 @@ pub async fn send_file(
             eprintln!("{}", msg);
             msg
         })?;
-    println!(
-        "Connected to {}, sending header {}",
-        addr,
-        header_json.trim()
-    );
     socket
         .write_all(header_json.as_bytes())
         .await
@@ -1268,93 +1805,255 @@ pub async fn send_file(
             eprintln!("{}", msg);
             msg
         })?;
-    let response = tokio::time::timeout(REQUEST_TIMEOUT, read_line(&mut socket, 128))
-        .await
-        .map_err(|_| "等待接收端确认超时".to_string())??;
-    if response.trim() != "ACCEPT" {
-        return Err("接收端拒绝了文件".into());
-    }
-    println!("File opened, name {}, size {}", file_name, file_size);
-    let mut buf = vec![0u8; CHUNK_SIZE];
-    let mut sent: u64 = 0;
-    let start = std::time::Instant::now();
-    let mut last_emit = std::time::Instant::now();
-    println!("Start sending file {} ({} bytes)", file_name, file_size);
-    loop {
-        let n = file.read(&mut buf).await.map_err(|e| {
-            let msg = format!("read file: {e}");
-            eprintln!("{}", msg);
-            msg
-        })?;
-        if n == 0 {
-            println!("File read complete, sent {} bytes", sent);
-            break;
+
+    // The receiver blocks on a user confirmation here; use the same generous
+    // timeout as its confirmation window so neither side gives up early.
+    let response = match tokio::time::timeout(REQUEST_TIMEOUT, read_line(&mut socket, 128)).await {
+        Err(_) => {
+            let message = "等待对方确认超时".to_string();
+            emit_send_failed(&app, &task_id, &root_display, &target_ip, message.clone());
+            return Err(message);
         }
-        println!("Read {} bytes, writing to socket...", n);
-        socket.write_all(&buf[..n]).await.map_err(|e| {
-            let msg = format!("write socket: {e}");
-            eprintln!("{}", msg);
-            msg
-        })?;
-        sent += n as u64;
-        println!(
-            "Sent {}/{} ({:.1}%)",
-            sent,
-            file_size,
-            if file_size > 0 {
-                sent as f64 / file_size as f64 * 100.0
-            } else {
-                0.0
-            }
-        );
-        let progress = if file_size > 0 {
-            (sent as f64 / file_size as f64) * 100.0
-        } else {
-            0.0
-        };
-        let elapsed = start.elapsed().as_secs_f64();
-        let speed = if elapsed > 0.0 {
-            sent as f64 / elapsed
-        } else {
-            0.0
-        };
-        if last_emit.elapsed().as_millis() > 100 || sent == file_size {
-            println!(
-                "Emit progress {}% {}/{} speed {:.1}",
-                progress, sent, file_size, speed
-            );
+        Ok(Err(error)) => {
+            let message = format!("连接中断：{error}");
+            emit_send_failed(&app, &task_id, &root_display, &target_ip, message.clone());
+            return Err(message);
+        }
+        Ok(Ok(line)) => line.trim().to_string(),
+    };
+    match response.as_str() {
+        "ACCEPT" => {}
+        "REJECT" | "CANCEL" => {
+            let message = "对方拒绝了本次传输".to_string();
+            emit_send_failed(&app, &task_id, &root_display, &target_ip, message.clone());
+            return Err(message);
+        }
+        other => {
+            let message = format!("对方响应异常：{other}");
+            emit_send_failed(&app, &task_id, &root_display, &target_ip, message.clone());
+            return Err(message);
+        }
+    }
+
+    println!(
+        "Start sending {} ({} bytes, batch={batch_mode})",
+        root_display, total_size
+    );
+    let _ = app.emit(
+        "transfer_started",
+        TransferStarted {
+            task_id: task_id.clone(),
+            file_name: root_display.clone(),
+            total: total_size,
+            direction: "send".into(),
+            peer: target_ip.clone(),
+            path: path.clone(),
+        },
+    );
+
+    let send_result = stream_entries(
+        &mut socket,
+        &app,
+        &task_id,
+        entries,
+        total_size,
+        batch_mode,
+        &target_ip,
+    )
+    .await;
+
+    // Validate the final ack instead of assuming success: only "OK" means the
+    // receiver actually finished writing everything to disk.
+    let ack = if send_result.is_ok() {
+        socket.flush().await.ok();
+        match tokio::time::timeout(ACK_TIMEOUT, read_line(&mut socket, 16)).await {
+            Ok(Ok(line)) => Some(line.trim().to_string()),
+            Ok(Err(_)) => None,
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    match (send_result, ack.as_deref()) {
+        (Ok(()), Some("OK")) => {
             let _ = app.emit(
-                "transfer_progress",
-                TransferProgress {
+                "transfer_complete",
+                TransferResult {
                     task_id: task_id.clone(),
-                    file_name: file_name.clone(),
-                    progress,
-                    speed,
-                    transferred: sent,
-                    total: file_size,
+                    file_name: root_display,
+                    path: path.clone(),
+                    open_path: Some(path.clone()),
+                    success: true,
+                    message: "sent".into(),
                     direction: "send".into(),
-                    peer: target_ip.clone(),
+                    peer: target_ip,
                 },
             );
-            last_emit = std::time::Instant::now();
+            clear_cancel(&task_id);
+            Ok(task_id)
+        }
+        (Ok(()), _) => {
+            let message = "对方未能完整保存文件".to_string();
+            emit_send_failed(&app, &task_id, &root_display, &target_ip, message.clone());
+            Err(message)
+        }
+        (Err(stream_error), _) => {
+            let message = if is_cancelled(&task_id) {
+                CANCELLED_MESSAGE.to_string()
+            } else {
+                stream_error
+            };
+            emit_send_failed(&app, &task_id, &root_display, &target_ip, message.clone());
+            Err(message)
         }
     }
-    socket.flush().await.map_err(|e| e.to_string())?;
-    // Wait for ack with timeout
-    let mut ack = [0u8; 3];
-    let _ = tokio::time::timeout(Duration::from_secs(5), socket.read(&mut ack)).await;
+}
+
+/// Stream every entry over the accepted connection, emitting cumulative
+/// progress. Returns once all bytes have been written to the socket.
+#[allow(clippy::too_many_arguments)]
+async fn stream_entries(
+    socket: &mut TcpStream,
+    app: &AppHandle,
+    task_id: &str,
+    entries: Vec<SendEntry>,
+    total_size: u64,
+    batch_mode: bool,
+    target_ip: &str,
+) -> Result<(), String> {
+    let mut buf = vec![0u8; CHUNK_SIZE];
+    let mut sent_total: u64 = 0;
+    let mut last_emit = std::time::Instant::now();
+    let mut speed_meter = SpeedMeter::new();
+
+    for entry in entries {
+        let mut reader: tokio::fs::File = match entry.preopened {
+            Some(file) => tokio::fs::File::from_std(file),
+            None => tokio::fs::File::open(&entry.absolute_path)
+                .await
+                .map_err(|e| format!("无法打开文件 {}：{e}", entry.display_name))?,
+        };
+        let mut sent_entry: u64 = 0;
+        while sent_entry < entry.size {
+            if is_cancelled(task_id) {
+                return Err(CANCELLED_MESSAGE.into());
+            }
+            let want = (entry.size - sent_entry).min(CHUNK_SIZE as u64) as usize;
+            let n = reader.read(&mut buf[..want]).await.map_err(|e| {
+                let msg = format!("read file: {e}");
+                eprintln!("{}", msg);
+                msg
+            })?;
+            if n == 0 {
+                return Err(format!("源文件在读取中途变短：{}", entry.display_name));
+            }
+            socket.write_all(&buf[..n]).await.map_err(|e| {
+                let msg = format!("write socket: {e}");
+                eprintln!("{}", msg);
+                msg
+            })?;
+            sent_entry += n as u64;
+            sent_total += n as u64;
+
+            let progress = if total_size > 0 {
+                (sent_total as f64 / total_size as f64) * 100.0
+            } else {
+                0.0
+            };
+            let speed = speed_meter.tick(sent_total, sent_total == total_size);
+            if last_emit.elapsed().as_millis() > 100 || sent_total == total_size {
+                let _ = app.emit(
+                    "transfer_progress",
+                    TransferProgress {
+                        task_id: task_id.to_string(),
+                        file_name: entry.display_name.clone(),
+                        progress,
+                        speed,
+                        transferred: sent_total,
+                        total: total_size,
+                        direction: "send".into(),
+                        peer: target_ip.to_string(),
+                    },
+                );
+                last_emit = std::time::Instant::now();
+            }
+        }
+        // In folder mode show per-file completion through the progress event.
+        let _ = batch_mode;
+    }
+    Ok(())
+}
+
+fn emit_send_failed(app: &AppHandle, task_id: &str, file_name: &str, peer: &str, message: String) {
     let _ = app.emit(
         "transfer_complete",
         TransferResult {
-            task_id: task_id.clone(),
-            file_name,
-            path: path.clone(),
-            open_path: Some(path.clone()),
-            success: true,
-            message: "sent".into(),
+            task_id: task_id.to_string(),
+            file_name: file_name.to_string(),
+            path: String::new(),
+            open_path: None,
+            success: false,
+            message,
             direction: "send".into(),
-            peer: target_ip,
+            peer: peer.to_string(),
         },
     );
-    Ok(task_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn collect_send_entries_lists_files_recursively() {
+        let base = std::env::temp_dir().join(format!("flashlan-test-{}", uuid::Uuid::new_v4()));
+        let nested = base.join("a/b");
+        tokio::fs::create_dir_all(&nested).await.unwrap();
+        tokio::fs::write(base.join("top.txt"), b"hello")
+            .await
+            .unwrap();
+        tokio::fs::write(nested.join("deep.bin"), [0u8; 3])
+            .await
+            .unwrap();
+
+        let (root, entries, total) = collect_send_entries(&base).await.unwrap();
+        assert_eq!(root, base.file_name().unwrap().to_str().unwrap());
+        assert_eq!(entries.len(), 2);
+        assert_eq!(total, 8);
+        assert!(entries.iter().any(|e| e.relative_path == "top.txt"));
+        assert!(entries
+            .iter()
+            .any(|e| e.relative_path.replace('\\', "/") == "a/b/deep.bin"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[tokio::test]
+    async fn collect_send_entries_rejects_empty_folder() {
+        let base = std::env::temp_dir().join(format!("flashlan-empty-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&base).await.unwrap();
+        assert!(collect_send_entries(&base).await.is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn safe_relative_path_blocks_traversal() {
+        assert!(safe_relative_path("docs/../..//etc/passwd").is_none());
+        assert!(safe_relative_path("../secret").is_none());
+        assert_eq!(
+            safe_relative_path("a/b/c.txt").unwrap(),
+            PathBuf::from("a/b/c.txt")
+        );
+        assert_eq!(safe_relative_path("").is_none(), true);
+    }
+
+    #[test]
+    fn unique_dir_avoids_existing() {
+        let base = std::env::temp_dir().join(format!("flashlan-dir-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::create_dir(base.join("folder")).unwrap();
+        let chosen = unique_dir(&base, "folder");
+        assert_eq!(chosen.file_name().unwrap(), "folder_1");
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

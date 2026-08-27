@@ -31,6 +31,14 @@ const activeTasks = computed(() =>
   transferStore.tasks.filter(task => task.status === 'transferring' || task.status === 'pending'),
 )
 const pendingRequest = computed(() => transferStore.pendingRequests[0])
+const pendingQueueCount = computed(() => Math.max(transferStore.pendingRequests.length - 1, 0))
+
+const avatarText = computed(() => {
+  const name = deviceStore.localDevice?.name?.trim()
+  if (!name) return 'FL'
+  const chars = Array.from(name.replace(/\s+/g, '')).slice(0, 2)
+  return chars.map(char => char.toUpperCase()).join('') || 'FL'
+})
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B'
@@ -118,7 +126,7 @@ onMounted(async () => {
             <div
               class="size-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold"
             >
-              MB
+              {{ avatarText }}
             </div>
             <div class="flex-1 min-w-0">
               <div class="text-sm font-medium truncate leading-none">
@@ -172,7 +180,7 @@ onMounted(async () => {
           <div
             class="size-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold shrink-0"
           >
-            MB
+            {{ avatarText }}
           </div>
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium truncate leading-none">
@@ -212,7 +220,15 @@ onMounted(async () => {
             <SIcon icon="lucide:download" class="text-xl" />
           </div>
           <div class="min-w-0">
-            <h2 class="font-semibold">收到文件</h2>
+            <h2 class="font-semibold">
+              收到文件
+              <span
+                v-if="pendingQueueCount"
+                class="ml-1.5 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary align-middle"
+              >
+                还有 {{ pendingQueueCount }} 个待确认
+              </span>
+            </h2>
             <p class="text-sm text-muted-foreground mt-1 truncate">
               {{ pendingRequest.peer }} 想向本机发送文件
             </p>

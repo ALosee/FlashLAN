@@ -2,13 +2,18 @@
 import { computed, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { SButton } from '@/ui/components/button'
+import { SDialog } from '@/ui/components/dialog'
 import { SIcon } from '@/ui/components/icon'
 import { type TransferTask, useTransferStore } from '@/stores/transfer'
 import { isTauri } from '@/utils/tauri'
 
 const transferStore = useTransferStore()
+const showClearConfirm = ref(false)
 const records = computed(() =>
-  transferStore.tasks.filter(task => task.status === 'completed' || task.status === 'failed'),
+  transferStore.tasks
+    .filter(task => task.status === 'completed' || task.status === 'failed')
+    .slice()
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
 )
 const completedCount = computed(
   () => records.value.filter(item => item.status === 'completed').length,
@@ -44,6 +49,20 @@ function formatBytes(bytes: number) {
 
 function recordStatus(status: TransferTask['status']) {
   return status === 'completed' ? '已完成' : '失败'
+}
+
+function formatTime(createdAt?: number) {
+  if (!createdAt) return ''
+  try {
+    return new Intl.DateTimeFormat('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(createdAt))
+  } catch {
+    return new Date(createdAt).toLocaleString()
+  }
 }
 
 function clearFeedback() {
@@ -87,14 +106,13 @@ function removeRecord(item: TransferTask) {
   feedback.value = `已删除「${item.fileName}」的传输记录`
 }
 
-function clearHistory() {
-  if (
-    typeof window !== 'undefined' &&
-    !window.confirm('确定清空全部传输记录吗？文件本身不会被删除。')
-  ) {
-    return
-  }
+function confirmClearHistory() {
+  showClearConfirm.value = true
+}
+
+function doClearHistory() {
   transferStore.clearHistory()
+  showClearConfirm.value = false
   feedbackIsError.value = false
   feedback.value = '传输记录已清空，文件本身未被删除'
 }
@@ -128,7 +146,7 @@ function clearHistory() {
           variant="outline"
           size="sm"
           class="shrink-0"
-          @click="clearHistory"
+          @click="confirmClearHistory"
         >
           <SIcon icon="lucide:trash-2" />
           <span class="hidden sm:inline">清空记录</span>
@@ -136,6 +154,25 @@ function clearHistory() {
         </SButton>
       </div>
     </div>
+
+    <!--
+ SDialog 会把未传的布尔 prop 转发为 false，吞掉库内默认值，
+         因此 show-confirm / show-cancel 必须显式给出 
+-->
+    <SDialog
+      v-model:open="showClearConfirm"
+      title="清空传输记录"
+      description="确定清空全部传输记录吗？文件本身不会被删除。"
+      size="sm"
+      is-alert
+      alert-type="warning"
+      :show-confirm="true"
+      :show-cancel="true"
+      confirm-text="清空"
+      cancel-text="取消"
+      @confirm="doClearHistory"
+      @cancel="showClearConfirm = false"
+    />
 
     <div
       v-if="feedback"
@@ -189,6 +226,10 @@ function clearHistory() {
                   </span>
                   <span class="text-border">·</span>
                   <span>{{ formatBytes(item.total) }}</span>
+                  <template v-if="item.createdAt">
+                    <span class="text-border">·</span>
+                    <span>{{ formatTime(item.createdAt) }}</span>
+                  </template>
                 </div>
               </div>
               <span

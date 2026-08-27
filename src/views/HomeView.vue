@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { open } from '@tauri-apps/plugin-dialog'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { SButton } from '@/ui/components/button'
 import { SCard } from '@/ui/components/card'
 import { SDialog } from '@/ui/components/dialog'
@@ -26,6 +29,8 @@ const isTestingConnection = ref(false)
 const connectionState = ref<'idle' | 'testing' | 'success' | 'error'>('idle')
 const connectionMessage = ref('')
 const testedEndpoint = ref('')
+const serverListening = ref(true)
+const serverError = ref('')
 
 const activeTasks = computed(() =>
   transferStore.tasks.filter(task => task.status === 'transferring' || task.status === 'pending'),
@@ -137,16 +142,77 @@ async function addManualDevice() {
   showAddDevice.value = false
 }
 
+function addDroppedPaths(paths: string[]) {
+  if (!paths.length) return
+  const known = new Set(selectedFiles.value)
+  for (const path of paths) {
+    if (path && !known.has(path)) {
+      selectedFiles.value.push(path)
+      known.add(path)
+    }
+  }
+}
+
+/** Web-view level drag & drop carries real file/folder paths on desktop. */
+let unlistenDragDrop: (() => void) | undefined
+async function setupTauriDragDrop() {
+  try {
+    const unlisten = await getCurrentWebview().onDragDropEvent(event => {
+      const payload = event.payload
+      if (payload.type === 'enter' || payload.type === 'over') {
+        isDragging.value = true
+      } else if (payload.type === 'leave') {
+        isDragging.value = false
+      } else if (payload.type === 'drop') {
+        isDragging.value = false
+        addDroppedPaths(payload.paths)
+      }
+    })
+    unlistenDragDrop = unlisten as () => void
+  } catch (error) {
+    console.warn('[FlashLAN] drag-drop listener unavailable', error)
+  }
+}
+
+/**
+ * Ctrl+V: send clipboard text as a generated .txt temp file. Images copied
+ * from the system clipboard do not expose real paths, so they are out of
+ * scope until a dedicated pipeline exists.
+ */
+function onPaste(e: ClipboardEvent) {
+  if ((e.target as HTMLElement)?.tagName === 'INPUT') return
+  const text = e.clipboardData?.getData('text/plain')?.trim()
+  if (!text) return
+  e.preventDefault()
+  void (async () => {
+    try {
+      if (isTauri()) {
+        const path = await invoke<string>('create_text_clipboard_file', { text })
+        addDroppedPaths([path])
+      } else {
+        selectedFiles.value.push(`clipboard-${Date.now()}.txt`)
+      }
+    } catch (error) {
+      console.warn('[FlashLAN] paste failed', error)
+    }
+  })()
+}
+
+function cancelTransfer(task: TransferTask) {
+  void transferStore.cancelTask(task.id)
+}
+
+/* Browser-preview fallback using standard HTML5 drag & drop. */
 function onDragOver(e: DragEvent) {
   e.preventDefault()
-  isDragging.value = true
+  if (!isTauri()) isDragging.value = true
 }
 function onDragLeave() {
-  isDragging.value = false
+  if (!isTauri()) isDragging.value = false
 }
 function onDrop(e: DragEvent) {
   e.preventDefault()
-  isDragging.value = false
+  if (!isTauri()) isDragging.value = false
 }
 
 async function pickFiles() {
@@ -258,15 +324,68 @@ function openHistory() {
   void router.push('/history')
 }
 
+let statusTimer: ReturnType<typeof setInterval> | undefined
+let unlistenServerStatus: (() => void) | undefined
+
 onMounted(async () => {
   await deviceStore.fetchLocal()
   await deviceStore.discover()
   await transferStore.ensureListener()
+  void refreshServerStatus()
+  // Manual devices have no mDNS liveness; probe them periodically instead.
+  await deviceStore.refreshManualStatus()
+  statusTimer = setInterval(() => {
+    void deviceStore.refreshManualStatus()
+  }, 15000)
+  if (isTauri()) {
+    void setupTauriDragDrop()
+    void listen<[boolean, string]>('server_status', event => {
+      const [listening, message] = event.payload
+      serverListening.value = listening
+      serverError.value = listening ? '' : message
+    }).then(unlisten => {
+      unlistenServerStatus = unlisten as () => void
+    })
+  }
+  document.addEventListener('paste', onPaste)
+})
+
+async function refreshServerStatus() {
+  if (!isTauri()) return
+  try {
+    serverListening.value = await invoke<boolean>('get_server_status')
+    serverError.value = ''
+  } catch {
+    serverListening.value = false
+    serverError.value = '无法查询传输服务状态'
+  }
+}
+
+onBeforeUnmount(() => {
+  unlistenDragDrop?.()
+  unlistenServerStatus?.()
+  document.removeEventListener('paste', onPaste)
+  if (statusTimer) clearInterval(statusTimer)
 })
 </script>
 
 <template>
   <div class="p-4 md:p-6 space-y-4 md:space-y-6 max-w-5xl mx-auto w-full">
+    <!-- Server bind failure banner -->
+    <div
+      v-if="isTauri() && !serverListening"
+      class="flex items-start gap-2 rounded-xl border border-destructive/15 bg-destructive/8 px-4 py-3 text-sm text-destructive"
+      role="alert"
+    >
+      <SIcon icon="lucide:triangle-alert" class="mt-0.5 shrink-0" />
+      <div class="min-w-0">
+        <div class="font-medium">文件接收服务未启动</div>
+        <div class="mt-0.5 text-xs">
+          {{ serverError || '端口 17321 可能被占用' }}，本机无法被其他设备发送文件，请检查后重启应用
+        </div>
+      </div>
+    </div>
+
     <!-- Header -->
     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div class="flex-1 min-w-0">
@@ -279,8 +398,16 @@ onMounted(async () => {
         class="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end bg-muted/50 sm:bg-transparent px-3 py-2 sm:p-0 rounded-lg"
       >
         <span class="text-xs text-muted-foreground">本机可被发现</span>
-        <div class="size-2 rounded-full bg-success shrink-0" />
-        <span class="text-xs font-medium text-success">在线</span>
+        <div
+          class="size-2 rounded-full shrink-0"
+          :class="serverListening ? 'bg-success' : 'bg-destructive'"
+        />
+        <span
+          class="text-xs font-medium"
+          :class="serverListening ? 'text-success' : 'text-destructive'"
+        >
+          {{ serverListening ? '在线' : '服务异常' }}
+        </span>
         <span
           v-if="deviceStore.localDevice"
           class="text-xs font-mono bg-muted px-2 py-1 rounded truncate max-w-[160px] sm:max-w-none"
@@ -340,7 +467,7 @@ onMounted(async () => {
         </div>
         <div class="text-xs text-muted-foreground mt-3 flex items-center justify-center gap-1.5">
           <SIcon icon="lucide:clipboard" class="text-xs" />
-          或直接粘贴剪贴板内容 Ctrl+V
+          按 Ctrl+V 可将剪贴板文本作为 .txt 文件发送
         </div>
       </div>
     </SCard>
@@ -415,10 +542,18 @@ onMounted(async () => {
               </div>
             </div>
             <span
-              class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-success/10 px-2 py-1 text-[10px] font-medium text-success"
+              class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-medium"
+              :class="
+                device.online === false
+                  ? 'bg-muted text-muted-foreground'
+                  : 'bg-success/10 text-success'
+              "
             >
-              <span class="size-1.5 rounded-full bg-success" />
-              在线
+              <span
+                class="size-1.5 rounded-full"
+                :class="device.online === false ? 'bg-muted-foreground' : 'bg-success'"
+              />
+              {{ device.online === false ? '离线' : '在线' }}
             </span>
           </div>
 
@@ -426,11 +561,18 @@ onMounted(async () => {
             <span class="rounded-md bg-muted/70 px-2 py-1 text-[11px] text-muted-foreground">
               {{ platformLabel(device.platform) }}
             </span>
-            <span class="text-[11px] text-muted-foreground">可发送文件</span>
+            <span class="text-[11px] text-muted-foreground">
+              {{ device.online === false ? '无法连接' : '可发送文件' }}
+            </span>
           </div>
 
           <div class="mt-3">
-            <SButton size="sm" class="h-9 w-full" @click="handleSend(device.ip, device.port)">
+            <SButton
+              size="sm"
+              class="h-9 w-full"
+              :disabled="device.online === false"
+              @click="handleSend(device.ip, device.port)"
+            >
               <SIcon icon="lucide:send" />
               发送文件
             </SButton>
@@ -619,6 +761,18 @@ onMounted(async () => {
                 <span class="shrink-0 text-xs font-semibold tabular-nums text-foreground">
                   {{ task.progress.toFixed(0) }}%
                 </span>
+                <SButton
+                  variant="ghost"
+                  color="destructive"
+                  size="sm"
+                  shape="square"
+                  class="size-7 shrink-0"
+                  aria-label="取消传输"
+                  title="取消传输"
+                  @click="cancelTransfer(task)"
+                >
+                  <SIcon icon="lucide:circle-x" />
+                </SButton>
               </div>
               <div
                 class="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted-foreground"
