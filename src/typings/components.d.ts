@@ -13,8 +13,6 @@ declare module 'vue' {
   export interface GlobalComponents {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
-    SBadge: typeof import('@soybeanjs/ui')['SBadge']
-    SDialog: typeof import('@soybeanjs/ui')['SDialog']
-    SInput: typeof import('@soybeanjs/ui')['SInput']
+    SDropdownMenu: typeof import('@soybeanjs/ui')['SDropdownMenu']
   }
 }

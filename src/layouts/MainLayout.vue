@@ -200,7 +200,8 @@ onMounted(async () => {
 
     <!-- Main -->
     <main
-      class="flex-1 min-w-0 overflow-auto bg-muted/20 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0"
+      class="flex-1 min-h-0 min-w-0 bg-muted/20 pb-[calc(3rem+env(safe-area-inset-bottom))] md:pb-0"
+      :class="route.path === '/messages' ? 'overflow-hidden' : 'overflow-auto'"
     >
       <RouterView />
     </main>

@@ -54,6 +54,22 @@ export interface TextMessageItem {
   createdAt: number
 }
 
+/**
+ * Normalize peer addresses emitted by older backends. Incoming TCP peers
+ * used to be persisted as `IP:ephemeral-source-port`, which made every new
+ * one-shot message connection look like a different offline device.
+ */
+export function normalizePeerAddress(peer: string) {
+  const value = peer.trim()
+  const bracketedIpv6 = value.match(/^\[([^\]]+)\]:\d+$/)
+  const ipv6Host = bracketedIpv6?.[1]
+  if (ipv6Host) return ipv6Host
+
+  const ipv4WithPort = value.match(/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/)
+  const ipv4Host = ipv4WithPort?.[1]
+  return ipv4Host || value
+}
+
 interface RequestPayload {
   task_id: string
   file_name: string
@@ -116,16 +132,18 @@ export const useTransferStore = defineStore('transfer', () => {
       const value = localStorage.getItem(textMessagesStorageKey)
       const parsed = value ? JSON.parse(value) : []
       if (!Array.isArray(parsed)) return [] as TextMessageItem[]
-      return parsed.filter(
-        (item): item is TextMessageItem =>
-          typeof item === 'object' &&
-          item !== null &&
-          typeof item.id === 'string' &&
-          typeof item.text === 'string' &&
-          typeof item.peer === 'string' &&
-          (item.direction === 'send' || item.direction === 'receive') &&
-          typeof item.createdAt === 'number',
-      )
+      return parsed
+        .filter(
+          (item): item is TextMessageItem =>
+            typeof item === 'object' &&
+            item !== null &&
+            typeof item.id === 'string' &&
+            typeof item.text === 'string' &&
+            typeof item.peer === 'string' &&
+            (item.direction === 'send' || item.direction === 'receive') &&
+            typeof item.createdAt === 'number',
+        )
+        .map(item => ({ ...item, peer: normalizePeerAddress(item.peer) }))
     } catch {
       return [] as TextMessageItem[]
     }
@@ -165,12 +183,23 @@ export const useTransferStore = defineStore('transfer', () => {
   )
 
   function addTextMessage(message: TextMessageItem) {
-    textMessages.value.unshift(message)
+    textMessages.value.unshift({ ...message, peer: normalizePeerAddress(message.peer) })
     if (textMessages.value.length > 200) textMessages.value.length = 200
   }
 
   function clearTextMessages() {
     textMessages.value = []
+  }
+
+  function clearTextMessagesForPeers(peers: string[]) {
+    const peerKeys = new Set(peers.map(normalizePeerAddress))
+    textMessages.value = textMessages.value.filter(
+      message => !peerKeys.has(normalizePeerAddress(message.peer)),
+    )
+  }
+
+  function removeTextMessage(messageId: string) {
+    textMessages.value = textMessages.value.filter(message => message.id !== messageId)
   }
 
   function addTask(task: TransferTask) {
@@ -487,5 +516,7 @@ export const useTransferStore = defineStore('transfer', () => {
     sendText,
     textMessages,
     clearTextMessages,
+    clearTextMessagesForPeers,
+    removeTextMessage,
   }
 })

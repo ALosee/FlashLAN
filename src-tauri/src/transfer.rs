@@ -517,6 +517,10 @@ pub async fn start_file_server(
             let Ok((socket, addr)) = listener.accept().await else {
                 continue;
             };
+            // The source port is ephemeral and changes for every one-shot
+            // message connection. Keep only the peer IP as the stable device
+            // key; otherwise each message is rendered as a new offline peer.
+            let peer_addr = stable_peer_address(addr);
             let app_clone = app.clone();
             let manager_clone = manager.clone();
             let tls_clone = tls.clone();
@@ -525,7 +529,6 @@ pub async fn start_file_server(
             tokio::spawn(async move {
                 // TLS happens first; transfer args are resolved after the
                 // handshake so a bad client cannot occupy save-dir locks.
-                let peer_addr = addr.to_string();
                 let (mut wire, peer_id) = match tokio::time::timeout(
                     HANDSHAKE_TIMEOUT,
                     accept_session(socket, &tls_clone, &fingerprint_clone),
@@ -958,6 +961,12 @@ fn safe_file_name(file_name: &str) -> String {
         .filter(|name| !name.is_empty() && *name != "." && *name != "..")
         .unwrap_or("file")
         .to_string()
+}
+
+/// Return a stable peer key for UI events. TCP source ports are ephemeral and
+/// must not identify a device because one-shot messages use a new connection.
+fn stable_peer_address(addr: SocketAddr) -> String {
+    addr.ip().to_string()
 }
 
 /// Like [`safe_file_name`] but keeps inner path structure, refusing any
@@ -2646,5 +2655,11 @@ mod tests {
         let chosen = unique_dir(&base, "folder");
         assert_eq!(chosen.file_name().unwrap(), "folder_1");
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn incoming_peer_key_ignores_ephemeral_source_port() {
+        let addr: SocketAddr = "192.168.1.42:53177".parse().unwrap();
+        assert_eq!(stable_peer_address(addr), "192.168.1.42");
     }
 }
