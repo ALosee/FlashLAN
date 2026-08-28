@@ -226,7 +226,7 @@ onBeforeUnmount(() => {
             :class="
               selectedPeer?.key === peer.key
                 ? 'border-primary/30 bg-primary/8'
-                : 'border-transparent hover:border-border/70 hover:bg-muted/50'
+                : 'border-transparent hover:border-border/70 hover:bg-muted/50 dark:hover:border-border/10'
             "
             @click="selectedPeerKey = peer.key"
           >
@@ -343,7 +343,7 @@ onBeforeUnmount(() => {
                     :class="
                       message.direction === 'send'
                         ? 'rounded-br-md bg-primary text-primary-foreground'
-                        : 'rounded-bl-md border border-border/70 bg-card'
+                        : 'rounded-bl-md border border-border/70 bg-card dark:border-border/10'
                     "
                   >
                     <p class="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
@@ -395,7 +395,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div class="border-t border-border/70 bg-card p-3 sm:p-4">
+          <div class="border-t border-border/70 bg-card p-3 sm:p-4 dark:border-border/10">
             <div
               v-if="sendError"
               class="mb-2 flex items-start gap-1.5 text-[11px] text-destructive"
@@ -405,7 +405,7 @@ onBeforeUnmount(() => {
               <span>{{ sendError }}</span>
             </div>
             <div
-              class="overflow-hidden rounded-xl border border-border/80 transition-colors focus-within:border-primary/45 focus-within:ring-4 focus-within:ring-primary/10"
+              class="overflow-hidden rounded-xl border border-border/80 transition-colors focus-within:border-primary/45 focus-within:ring-4 focus-within:ring-primary/10 dark:border-border/10"
               :class="!selectedPeer?.ip || !selectedPeer.online ? 'bg-muted/30' : 'bg-card'"
             >
               <textarea
@@ -423,7 +423,7 @@ onBeforeUnmount(() => {
                 @keydown="onTextComposerKeydown"
               />
               <div
-                class="flex items-center justify-between gap-3 border-t border-border/60 px-3 py-2"
+                class="flex items-center justify-between gap-3 border-t border-border/60 px-3 py-2 dark:border-border/10"
               >
                 <span
                   class="text-[10px]"

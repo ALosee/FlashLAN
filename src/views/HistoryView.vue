@@ -248,7 +248,9 @@ function doClearHistory() {
               </span>
             </div>
 
-            <div class="mt-3 flex items-center gap-2 border-t border-border/60 pt-3">
+            <div
+              class="mt-3 flex items-center gap-2 border-t border-border/60 pt-3 dark:border-border/10"
+            >
               <div
                 v-if="recordPathLabel(item)"
                 class="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-muted-foreground"
