@@ -13,6 +13,7 @@
     "dev": "vite",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
+    "icon:macos": "node scripts/generate-macos-icon.mjs",
     "lint": "oxlint --fix && eslint --fix .",
     "lint:check": "oxlint && eslint .",
     "prepare": "simple-git-hooks",

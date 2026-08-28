@@ -11,6 +11,9 @@ use std::{
 };
 use tauri::{Emitter, Manager, State};
 
+#[cfg(desktop)]
+const TRAY_ICON_RGBA: &[u8] = include_bytes!("../icons/tray-icon.rgba");
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppSettings {
     device_name: String,
@@ -520,11 +523,7 @@ fn setup_tray(app: &tauri::AppHandle) -> Result<(), tauri::Error> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .tooltip("FlashLAN - 局域网快传")
-        .icon(
-            app.default_window_icon()
-                .cloned()
-                .ok_or_else(|| tauri::Error::AssetNotFound("default window icon".into()))?,
-        )
+        .icon(tauri::image::Image::new(TRAY_ICON_RGBA, 32, 32))
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => {
                 if let Some(window) = app.get_webview_window("main") {
