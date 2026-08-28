@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
+import { onBackButtonPress } from '@tauri-apps/api/app'
+import { SDropdownMenu } from '@soybeanjs/ui'
+import type { MenuOptionData, MenuUi } from '@soybeanjs/headless'
 import { SCard } from '@/ui/components/card'
-import { SButton } from '@/ui/components/button'
+import { SButton, SButtonIcon } from '@/ui/components/button'
 import { SDialog } from '@/ui/components/dialog'
 import { SIcon } from '@/ui/components/icon'
 import { SInput } from '@/ui/components/input'
@@ -32,6 +34,28 @@ const qrDataUrl = computed(() =>
 const onlineCount = computed(
   () => deviceStore.devices.filter(device => device.online !== false).length,
 )
+
+type MoreAction = 'scan' | 'add'
+
+const moreActions = computed<MenuOptionData<MoreAction>[]>(() => [
+  {
+    label: '扫码连接',
+    value: 'scan',
+    icon: 'lucide:scan-line',
+    disabled: isScanning.value,
+  },
+  {
+    label: '添加设备',
+    value: 'add',
+    icon: 'lucide:plus',
+  },
+])
+
+const moreMenuUi: Partial<MenuUi> = {
+  popup: 'w-32 max-w-[calc(100vw-1.5rem)] rounded-xl border border-border/80 bg-card p-1 shadow-lg',
+  item: 'min-h-10 rounded-lg',
+  itemIcon: 'size-3.5 shrink-0 text-primary',
+}
 
 const ipv4Pattern = /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/
 
@@ -147,6 +171,47 @@ async function openQrDialog() {
 }
 
 let cancelScanner: (() => Promise<void>) | undefined
+type BackButtonListener = Awaited<ReturnType<typeof onBackButtonPress>>
+let backButtonListener: BackButtonListener | undefined
+let backButtonListenerPromise: Promise<BackButtonListener | undefined> | undefined
+
+async function enableBackButtonHandling() {
+  if (!isTauri() || !isMobile || backButtonListener) return
+  if (backButtonListenerPromise) {
+    await backButtonListenerPromise
+    return
+  }
+
+  const listenerPromise = onBackButtonPress(() => {
+    if (showMoreActions.value) {
+      closeMoreActions()
+    } else if (isScanning.value) {
+      void cancelActiveScan()
+    }
+  })
+    .then(listener => {
+      if (showMoreActions.value || isScanning.value) {
+        backButtonListener = listener
+      } else {
+        void listener.unregister()
+      }
+      return listener
+    })
+    .catch(error => {
+      console.error('[FlashLAN] register back-button listener failed', error)
+      return undefined
+    })
+
+  backButtonListenerPromise = listenerPromise
+  await listenerPromise
+  if (backButtonListenerPromise === listenerPromise) backButtonListenerPromise = undefined
+}
+
+function disableBackButtonHandling() {
+  const listener = backButtonListener
+  backButtonListener = undefined
+  if (listener) void listener.unregister()
+}
 
 async function cancelActiveScan() {
   if (!isScanning.value) return
@@ -154,6 +219,12 @@ async function cancelActiveScan() {
     await cancelScanner?.()
   } catch {
     // The scanner may already have closed itself after a successful decode.
+  } finally {
+    // The Android plugin closes the camera but may leave the scan promise
+    // pending after cancellation, so reset the UI state explicitly here.
+    isScanning.value = false
+    cancelScanner = undefined
+    disableBackButtonHandling()
   }
 }
 
@@ -165,6 +236,7 @@ async function scanConnect() {
     const { scan, cancel, checkPermissions, requestPermissions, Format } =
       await import('@tauri-apps/plugin-barcode-scanner')
     cancelScanner = cancel
+    await enableBackButtonHandling()
     let granted = await checkPermissions()
     if (granted !== 'granted') granted = await requestPermissions()
     if (granted !== 'granted') {
@@ -184,22 +256,30 @@ async function scanConnect() {
   } finally {
     isScanning.value = false
     cancelScanner = undefined
+    disableBackButtonHandling()
   }
 }
 
-function openScanFromMore() {
+function selectMoreAction(item: MenuOptionData<MoreAction>) {
   showMoreActions.value = false
-  void scanConnect()
-}
-
-function openAddDeviceFromMore() {
-  showMoreActions.value = false
-  openAddDevice()
+  if (item.value === 'scan') {
+    void scanConnect()
+  } else {
+    openAddDevice()
+  }
 }
 
 function closeMoreActions() {
   showMoreActions.value = false
 }
+
+watch(showMoreActions, isMoreActionsOpen => {
+  if (isMoreActionsOpen) {
+    void enableBackButtonHandling()
+  } else if (!isScanning.value) {
+    disableBackButtonHandling()
+  }
+})
 
 async function applyScanResult(raw: string) {
   const match = /^flashlan:\/\/([\d.]+):(\d+)#([0-9a-fA-F]{64})$/.exec(raw.trim())
@@ -233,21 +313,8 @@ function platformLabel(platform: string) {
 }
 
 let statusTimer: ReturnType<typeof setInterval> | undefined
-let unlistenBackButton: (() => void) | undefined
 
 onMounted(() => {
-  if (isTauri()) {
-    document.addEventListener('click', closeMoreActions)
-    void listen('back-button', () => {
-      if (showMoreActions.value) {
-        closeMoreActions()
-      } else if (isScanning.value) {
-        void cancelActiveScan()
-      }
-    }).then(unlisten => {
-      unlistenBackButton = unlisten as () => void
-    })
-  }
   void deviceStore.discover()
   void deviceStore.refreshManualStatus()
   // 手动设备没有 mDNS 在线通知，用定时探测保持状态新鲜。
@@ -258,8 +325,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   void cancelActiveScan()
-  document.removeEventListener('click', closeMoreActions)
-  unlistenBackButton?.()
+  disableBackButtonHandling()
   if (statusTimer) clearInterval(statusTimer)
 })
 </script>
@@ -267,9 +333,45 @@ onBeforeUnmount(() => {
 <template>
   <div class="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 md:p-8">
     <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-      <div class="min-w-0">
-        <h1 class="text-2xl font-bold tracking-tight">附近设备</h1>
-        <p class="mt-1 text-sm text-muted-foreground">发现、连接并管理同一局域网中的设备</p>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h1 class="text-2xl font-bold tracking-tight">附近设备</h1>
+            <p class="mt-1 text-sm text-muted-foreground">发现、连接并管理同一局域网中的设备</p>
+          </div>
+          <div v-if="isMobile" class="flex shrink-0 items-center gap-2">
+            <SDropdownMenu
+              v-model:open="showMoreActions"
+              :items="moreActions"
+              placement="bottom-end"
+              :show-arrow="false"
+              :ui="moreMenuUi"
+              @select="selectMoreAction"
+            >
+              <template #trigger>
+                <SButtonIcon
+                  color="primary"
+                  variant="soft"
+                  icon="lucide:ellipsis"
+                  aria-label="更多操作"
+                  title="更多操作"
+                  class="size-10 rounded-xl"
+                />
+              </template>
+            </SDropdownMenu>
+            <SButtonIcon
+              color="primary"
+              variant="solid"
+              icon="lucide:refresh-cw"
+              :icon-class="deviceStore.isDiscovering ? 'animate-spin' : ''"
+              aria-label="刷新附近设备"
+              title="刷新附近设备"
+              :disabled="deviceStore.isDiscovering"
+              class="size-10 rounded-xl"
+              @click="deviceStore.discover()"
+            />
+          </div>
+        </div>
         <div class="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
           <span
             class="size-1.5 rounded-full"
@@ -289,60 +391,15 @@ onBeforeUnmount(() => {
           </span>
         </div>
       </div>
-      <div class="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
-        <template v-if="isMobile">
-          <div class="relative">
-            <SButton
-              variant="outline"
-              :aria-expanded="showMoreActions"
-              aria-haspopup="menu"
-              @click.stop="showMoreActions = !showMoreActions"
-            >
-              <SIcon icon="lucide:ellipsis" />
-              更多
-            </SButton>
-            <div
-              v-if="showMoreActions"
-              role="menu"
-              class="absolute right-0 top-full z-20 mt-2 min-w-40 rounded-xl border border-border/80 bg-card p-1.5 shadow-lg"
-              @click.stop
-            >
-              <button
-                type="button"
-                role="menuitem"
-                class="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs transition-colors hover:bg-muted"
-                :disabled="isScanning"
-                @click="openScanFromMore"
-              >
-                <SIcon
-                  icon="lucide:scan-line"
-                  class="text-primary"
-                  :class="isScanning ? 'animate-pulse' : ''"
-                />
-                扫码连接
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                class="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs transition-colors hover:bg-muted"
-                @click="openAddDeviceFromMore"
-              >
-                <SIcon icon="lucide:plus" class="text-primary" />
-                添加设备
-              </button>
-            </div>
-          </div>
-        </template>
-        <template v-else>
-          <SButton variant="outline" @click="openQrDialog">
-            <SIcon icon="lucide:qr-code" />
-            二维码
-          </SButton>
-          <SButton variant="outline" @click="openAddDevice">
-            <SIcon icon="lucide:plus" />
-            添加设备
-          </SButton>
-        </template>
+      <div v-if="!isMobile" class="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
+        <SButton variant="outline" @click="openQrDialog">
+          <SIcon icon="lucide:qr-code" />
+          二维码
+        </SButton>
+        <SButton variant="outline" @click="openAddDevice">
+          <SIcon icon="lucide:plus" />
+          添加设备
+        </SButton>
         <SButton
           class="shadow-sm"
           :disabled="deviceStore.isDiscovering"

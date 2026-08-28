@@ -195,7 +195,7 @@ function doClearHistory() {
       <article
         v-for="item in records"
         :key="item.id"
-        class="group relative overflow-hidden rounded-2xl border border-border/80 bg-card p-3.5 shadow-sm transition-all hover:border-primary/25 hover:shadow-md sm:p-4 dark:border-border/10"
+        class="group relative overflow-hidden rounded-2xl border border-border/80 bg-card p-3.5 shadow-sm transition-all sm:p-4 dark:border-border/10"
       >
         <div class="flex items-start gap-3 sm:gap-4">
           <div

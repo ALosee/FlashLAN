@@ -406,6 +406,13 @@ async fn collect_send_entries(path: &Path) -> Result<(String, Vec<SendEntry>, u6
     Ok((root_display, entries, total))
 }
 
+fn single_file_display_name(entries: &[SendEntry]) -> String {
+    entries
+        .first()
+        .map(|entry| entry.display_name.clone())
+        .unwrap_or_else(|| "file".to_string())
+}
+
 pub async fn test_connection(target_ip: String, target_port: u16) -> Result<(), String> {
     if target_port == 0 {
         return Err("端口号必须在 1 到 65535 之间".into());
@@ -2182,11 +2189,23 @@ async fn send_session(
     let batch_mode = entries.len() > 1 || single_is_dir;
     let fs_root = if multi && any_dir {
         format!("FlashLAN-{}", chrono_like_timestamp_short())
+    } else if single_is_dir {
+        // Preserve the selected folder as the root when transferring one
+        // folder, instead of flattening its contents into the save directory.
+        Path::new(&paths[0])
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("folder")
+            .to_string()
     } else {
         String::new()
     };
     let root_display = if multi && !any_dir {
         format!("{} 个文件", entries.len())
+    } else if !multi && !single_is_dir {
+        // A single file is not a batch. Its real name must be sent in the
+        // header so the receiver can retain the extension (e.g. .jpg).
+        single_file_display_name(&entries)
     } else {
         fs_root.clone()
     };
@@ -2573,6 +2592,18 @@ mod tests {
         let base = std::env::temp_dir().join(format!("flashlan-empty-{}", uuid::Uuid::new_v4()));
         tokio::fs::create_dir_all(&base).await.unwrap();
         assert!(collect_send_entries(&base).await.is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[tokio::test]
+    async fn single_file_display_name_keeps_extension() {
+        let base = std::env::temp_dir().join(format!("flashlan-image-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&base).await.unwrap();
+        let image = base.join("photo.jpg");
+        tokio::fs::write(&image, [0xff, 0xd8, 0xff]).await.unwrap();
+
+        let (_, entries, _) = collect_send_entries(&image).await.unwrap();
+        assert_eq!(single_file_display_name(&entries), "photo.jpg");
         let _ = std::fs::remove_dir_all(&base);
     }
 

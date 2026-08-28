@@ -438,7 +438,7 @@ onBeforeUnmount(() => {
     <section class="border-t border-border/70 pt-4" aria-labelledby="destination-title">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
         <div class="min-w-0 flex-1">
-          <div class="w-full flex items-center justify-between">
+          <div class="flex w-full items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-2.5">
               <div
                 class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
@@ -468,15 +468,6 @@ onBeforeUnmount(() => {
                   :class="deviceStore.isDiscovering ? 'animate-spin' : ''"
                 />
               </button>
-              <SButton
-                size="lg"
-                class="min-w-40 shrink-0 whitespace-nowrap"
-                :disabled="!canSendFiles"
-                @click="selectedDevice && sendFilesTo(selectedDevice)"
-              >
-                <SIcon icon="lucide:send" :class="isSendingFiles ? 'animate-pulse' : ''" />
-                {{ isSendingFiles ? '发送中…' : '发送文件' }}
-              </SButton>
             </div>
           </div>
           <div
@@ -532,6 +523,15 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
+        <SButton
+          size="lg"
+          class="w-full shrink-0 whitespace-nowrap lg:min-w-40 lg:w-auto"
+          :disabled="!canSendFiles"
+          @click="selectedDevice && sendFilesTo(selectedDevice)"
+        >
+          <SIcon icon="lucide:send" :class="isSendingFiles ? 'animate-pulse' : ''" />
+          {{ isSendingFiles ? '发送中…' : '发送文件' }}
+        </SButton>
       </div>
       <div
         v-if="sendError"
