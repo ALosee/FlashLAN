@@ -10,6 +10,7 @@ import { type TextMessageItem, useTransferStore } from '@/stores/transfer'
 interface MessagePeer {
   key: string
   name: string
+  sourceName?: string
   ip?: string
   port?: number
   online: boolean
@@ -28,12 +29,15 @@ const maxTextBytes = 512 * 1024
 const peers = computed<MessagePeer[]>(() => {
   const knownPeers: MessagePeer[] = deviceStore.devices.map(device => ({
     key: `device:${device.id}`,
-    name: device.name,
+    name: device.alias || device.name,
+    sourceName: device.name,
     ip: device.ip,
     port: device.port,
     online: device.online !== false,
   }))
-  const knownNames = new Set(knownPeers.flatMap(peer => [peer.name, peer.ip].filter(Boolean)))
+  const knownNames = new Set(
+    knownPeers.flatMap(peer => [peer.name, peer.sourceName, peer.ip].filter(Boolean)),
+  )
   const historyPeers = Array.from(new Set(transferStore.textMessages.map(message => message.peer)))
 
   return [
@@ -49,8 +53,7 @@ const peers = computed<MessagePeer[]>(() => {
 })
 
 function matchesPeer(message: TextMessageItem, peer: MessagePeer) {
-  if (peer.ip) return message.peer === peer.ip || message.peer === peer.name
-  return message.peer === peer.name
+  return [peer.ip, peer.name, peer.sourceName].includes(message.peer)
 }
 
 const peerRows = computed(() =>

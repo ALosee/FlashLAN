@@ -94,6 +94,22 @@ async fn test_connection(target_ip: String, target_port: Option<u16>) -> Result<
 }
 
 #[tauri::command]
+async fn get_peer_fingerprint(
+    target_ip: String,
+    target_port: Option<u16>,
+    identity: tauri::State<'_, security::Identity>,
+) -> Result<String, String> {
+    let port = target_port.unwrap_or(discovery::SERVICE_PORT);
+    transfer::get_peer_fingerprint(
+        target_ip,
+        port,
+        identity.client_connector()?,
+        identity.fingerprint.clone(),
+    )
+    .await
+}
+
+#[tauri::command]
 async fn verify_peer_fingerprint(
     target_ip: String,
     target_port: Option<u16>,
@@ -467,6 +483,7 @@ pub fn run() {
             set_save_path,
             discover_devices,
             test_connection,
+            get_peer_fingerprint,
             verify_peer_fingerprint,
             send_file,
             open_file_location,

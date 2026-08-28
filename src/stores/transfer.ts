@@ -131,12 +131,16 @@ export const useTransferStore = defineStore('transfer', () => {
     }
   }
 
+  function loadAutoReceivePreference() {
+    if (typeof localStorage === 'undefined') return true
+    const stored = localStorage.getItem(autoReceiveStorageKey)
+    return stored === null ? true : stored === 'true'
+  }
+
   const tasks = ref<TransferTask[]>(loadTasks())
   const pendingRequests = ref<TransferRequest[]>([])
   const textMessages = ref<TextMessageItem[]>(loadTextMessages())
-  const autoReceiveEnabled = ref(
-    typeof localStorage !== 'undefined' && localStorage.getItem(autoReceiveStorageKey) === 'true',
-  )
+  const autoReceiveEnabled = ref(loadAutoReceivePreference())
   const isListening = ref(false)
 
   watch(

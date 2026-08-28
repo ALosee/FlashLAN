@@ -202,7 +202,7 @@ impl Default for TransferManagerInner {
     fn default() -> Self {
         Self {
             pending: Mutex::new(HashMap::new()),
-            auto_receive: AtomicBool::new(false),
+            auto_receive: AtomicBool::new(true),
             save_dir: RwLock::new(PathBuf::new()),
         }
     }
@@ -432,20 +432,17 @@ pub async fn test_connection(target_ip: String, target_port: u16) -> Result<(), 
     Ok(())
 }
 
-/// Establish a TLS session and verify the identity advertised by the peer.
-/// The barcode contains this fingerprint, so pairing must not trust the QR
-/// payload until the device on the other end of the socket presents the same
-/// identity over the encrypted channel.
-pub async fn verify_peer_fingerprint(
+/// Establish a TLS session and read the identity advertised by the peer.
+/// The fingerprint is returned to the UI only as an internal device identity;
+/// it is never required to be shown to the user.
+pub async fn get_peer_fingerprint(
     target_ip: String,
     target_port: u16,
-    expected_fingerprint: String,
     connector: TlsConnector,
     own_fingerprint: String,
-) -> Result<(), String> {
-    let expected = expected_fingerprint.trim().to_ascii_lowercase();
-    if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err("设备指纹格式无效".into());
+) -> Result<String, String> {
+    if target_port == 0 {
+        return Err("端口号必须在 1 到 65535 之间".into());
     }
 
     let ip = target_ip
@@ -473,6 +470,29 @@ pub async fn verify_peer_fingerprint(
         .await
         .map_err(|_| "等待设备身份信息超时".to_string())??
         .to_ascii_lowercase();
+    if actual.len() != 64 || !actual.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("设备身份信息无效".into());
+    }
+    Ok(actual)
+}
+
+/// Establish a TLS session and verify the identity advertised by the peer.
+/// The barcode contains this fingerprint, so pairing must not trust the QR
+/// payload until the device on the other end of the socket presents the same
+/// identity over the encrypted channel.
+pub async fn verify_peer_fingerprint(
+    target_ip: String,
+    target_port: u16,
+    expected_fingerprint: String,
+    connector: TlsConnector,
+    own_fingerprint: String,
+) -> Result<(), String> {
+    let expected = expected_fingerprint.trim().to_ascii_lowercase();
+    if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("设备指纹格式无效".into());
+    }
+
+    let actual = get_peer_fingerprint(target_ip, target_port, connector, own_fingerprint).await?;
 
     if actual != expected {
         return Err("二维码中的设备指纹与实际设备不一致，请重新扫码".into());

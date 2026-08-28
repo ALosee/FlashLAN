@@ -436,39 +436,52 @@ onBeforeUnmount(() => {
 
     <!-- Send area -->
     <section class="border-t border-border/70 pt-4" aria-labelledby="destination-title">
-      <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+      <div class="flex flex-col gap-3">
         <div class="min-w-0 flex-1">
-          <div class="flex w-full items-center justify-between gap-3">
-            <div class="flex min-w-0 items-center gap-2.5">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+            <div class="flex min-w-0 flex-1 items-center justify-between gap-3">
+              <div class="flex min-w-0 items-center gap-2.5">
+                <div
+                  class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
+                >
+                  <SIcon icon="lucide:send-to-back" class="text-base" />
+                </div>
+                <div class="flex min-w-0 items-center gap-2">
+                  <h2 id="destination-title" class="shrink-0 text-sm font-semibold">发送到</h2>
+                  <span class="min-w-0 truncate text-xs text-muted-foreground">
+                    {{ selectedDevice ? selectedDevice.alias || selectedDevice.name : '选择设备' }}
+                  </span>
+                </div>
+              </div>
               <div
-                class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
+                class="flex shrink-0 items-center justify-end gap-3 text-xs text-muted-foreground"
               >
-                <SIcon icon="lucide:send-to-back" class="text-base" />
-              </div>
-              <div class="flex min-w-0 items-center gap-2">
-                <h2 id="destination-title" class="shrink-0 text-sm font-semibold">发送到</h2>
-                <span class="min-w-0 truncate text-xs text-muted-foreground">
-                  {{ selectedDevice ? selectedDevice.name : '选择设备' }}
-                </span>
+                <span class="shrink-0 whitespace-nowrap">{{ onlineDevices.length }} 台在线</span>
+                <button
+                  type="button"
+                  class="flex size-7 shrink-0 appearance-none items-center justify-center rounded-md border-0 bg-transparent p-0 text-primary outline-none transition-colors focus-visible:ring-3 focus-visible:ring-primary/30 hover:bg-primary/10 active:bg-primary/15 disabled:cursor-not-allowed disabled:bg-transparent disabled:opacity-50"
+                  :disabled="deviceStore.isDiscovering"
+                  :aria-label="deviceStore.isDiscovering ? '正在刷新附近设备' : '刷新附近设备'"
+                  :aria-busy="deviceStore.isDiscovering"
+                  :title="deviceStore.isDiscovering ? '正在刷新附近设备' : '刷新附近设备'"
+                  @click="refreshDevices"
+                >
+                  <SIcon
+                    :icon="deviceStore.isDiscovering ? 'lucide:loader-circle' : 'lucide:refresh-cw'"
+                    :class="deviceStore.isDiscovering ? 'animate-spin' : ''"
+                  />
+                </button>
               </div>
             </div>
-            <div class="flex shrink-0 items-center justify-end gap-3 text-xs text-muted-foreground">
-              <span class="shrink-0 whitespace-nowrap">{{ onlineDevices.length }} 台在线</span>
-              <button
-                type="button"
-                class="flex size-7 shrink-0 appearance-none items-center justify-center rounded-md border-0 bg-transparent p-0 text-primary outline-none transition-colors focus-visible:ring-3 focus-visible:ring-primary/30 hover:bg-primary/10 active:bg-primary/15 disabled:cursor-not-allowed disabled:bg-transparent disabled:opacity-50"
-                :disabled="deviceStore.isDiscovering"
-                :aria-label="deviceStore.isDiscovering ? '正在刷新附近设备' : '刷新附近设备'"
-                :aria-busy="deviceStore.isDiscovering"
-                :title="deviceStore.isDiscovering ? '正在刷新附近设备' : '刷新附近设备'"
-                @click="refreshDevices"
-              >
-                <SIcon
-                  :icon="deviceStore.isDiscovering ? 'lucide:loader-circle' : 'lucide:refresh-cw'"
-                  :class="deviceStore.isDiscovering ? 'animate-spin' : ''"
-                />
-              </button>
-            </div>
+            <SButton
+              size="lg"
+              class="hidden shrink-0 whitespace-nowrap lg:inline-flex lg:min-w-40 lg:w-auto"
+              :disabled="!canSendFiles"
+              @click="selectedDevice && sendFilesTo(selectedDevice)"
+            >
+              <SIcon icon="lucide:send" :class="isSendingFiles ? 'animate-pulse' : ''" />
+              {{ isSendingFiles ? '发送中…' : '发送文件' }}
+            </SButton>
           </div>
           <div
             v-if="deviceStore.error"
@@ -498,7 +511,7 @@ onBeforeUnmount(() => {
                 :icon="device.platform === 'windows' ? 'lucide:monitor' : 'lucide:smartphone'"
                 class="shrink-0 text-xs"
               />
-              <span class="max-w-40 truncate">{{ device.name }}</span>
+              <span class="max-w-40 truncate">{{ device.alias || device.name }}</span>
               <SIcon
                 icon="lucide:check"
                 class="shrink-0 text-xs transition-opacity"
@@ -522,16 +535,16 @@ onBeforeUnmount(() => {
               </SButton>
             </div>
           </div>
+          <SButton
+            size="lg"
+            class="mt-3 w-full whitespace-nowrap lg:hidden"
+            :disabled="!canSendFiles"
+            @click="selectedDevice && sendFilesTo(selectedDevice)"
+          >
+            <SIcon icon="lucide:send" :class="isSendingFiles ? 'animate-pulse' : ''" />
+            {{ isSendingFiles ? '发送中…' : '发送文件' }}
+          </SButton>
         </div>
-        <SButton
-          size="lg"
-          class="w-full shrink-0 whitespace-nowrap lg:min-w-40 lg:w-auto"
-          :disabled="!canSendFiles"
-          @click="selectedDevice && sendFilesTo(selectedDevice)"
-        >
-          <SIcon icon="lucide:send" :class="isSendingFiles ? 'animate-pulse' : ''" />
-          {{ isSendingFiles ? '发送中…' : '发送文件' }}
-        </SButton>
       </div>
       <div
         v-if="sendError"
