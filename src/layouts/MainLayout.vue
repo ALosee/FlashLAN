@@ -70,7 +70,7 @@ onMounted(async () => {
   <div class="flex h-[100dvh] w-screen overflow-hidden bg-background flex-col md:flex-row">
     <!-- Mobile header -->
     <header
-      class="flex md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between px-4 border-b bg-card pt-[env(safe-area-inset-top)]"
+      class="flex md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between px-4 border-b border-border bg-card pt-[env(safe-area-inset-top)]"
     >
       <div class="flex items-center gap-2">
         <img
@@ -146,7 +146,7 @@ onMounted(async () => {
     </div>
 
     <!-- Desktop sidebar -->
-    <aside class="hidden md:flex w-60 shrink-0 border-r bg-card flex-col">
+    <aside class="hidden md:flex w-60 shrink-0 border-r border-border bg-card flex-col">
       <div class="h-14 flex items-center gap-3 px-5 shrink-0">
         <img
           src="/flashlan-icon.svg"
@@ -214,7 +214,7 @@ onMounted(async () => {
       aria-modal="true"
     >
       <div class="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
-      <div class="relative w-full max-w-sm rounded-2xl border bg-card shadow-2xl p-5">
+      <div class="relative w-full max-w-sm rounded-2xl border border-border bg-card shadow-2xl p-5">
         <div class="flex items-start gap-3">
           <div
             class="size-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0"
@@ -271,7 +271,7 @@ onMounted(async () => {
       class="fixed right-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:right-5 md:bottom-5 z-40 w-[min(22rem,calc(100vw-1.5rem))]"
     >
       <button
-        class="w-full text-left rounded-xl border bg-card/95 backdrop-blur shadow-xl p-3 transition-colors hover:bg-muted/50"
+        class="w-full text-left rounded-xl border border-border bg-card/95 backdrop-blur shadow-xl p-3 transition-colors hover:bg-muted/50"
         @click="navTo('/')"
       >
         <div class="flex items-center justify-between gap-3">
@@ -305,7 +305,7 @@ onMounted(async () => {
 
     <!-- Mobile bottom nav -->
     <nav
-      class="flex md:hidden fixed bottom-0 left-0 right-0 bg-card border-t px-1 py-1 pb-[env(safe-area-inset-bottom)] z-30"
+      class="flex md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border px-1 py-1 pb-[env(safe-area-inset-bottom)] z-30"
     >
       <button
         v-for="item in menus"

@@ -344,7 +344,7 @@ onBeforeUnmount(() => {
 
     <!-- File upload area -->
     <section
-      class="overflow-hidden rounded-[1.5rem] border border-border/80 p-2 dark:border-border/10"
+      class="overflow-hidden rounded-[1.5rem] border border-border p-2"
       :class="selectedFiles.length ? 'border-solid' : 'border-dashed'"
       aria-label="文件上传区域"
     >
@@ -435,10 +435,7 @@ onBeforeUnmount(() => {
     </section>
 
     <!-- Send area -->
-    <section
-      class="border-t border-border/70 pt-4 dark:border-border/10"
-      aria-labelledby="destination-title"
-    >
+    <section class="border-t border-border pt-4" aria-labelledby="destination-title">
       <div class="flex flex-col gap-3">
         <div class="min-w-0 flex-1">
           <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
@@ -528,7 +525,7 @@ onBeforeUnmount(() => {
           </div>
           <div
             v-else
-            class="mt-3 flex min-h-20 items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/15 px-4 py-3 dark:border-border/10"
+            class="mt-3 flex min-h-20 items-center justify-center rounded-xl border border-dashed border-border bg-muted/15 px-4 py-3"
           >
             <div class="flex items-center gap-2 text-xs text-muted-foreground">
               <SIcon icon="lucide:scan-search" />
@@ -560,10 +557,7 @@ onBeforeUnmount(() => {
     </section>
 
     <!-- Transfer activity -->
-    <section
-      v-if="activeTasks.length || finishedTasks.length"
-      class="border-t border-border/70 pt-4 dark:border-border/10"
-    >
+    <section v-if="activeTasks.length || finishedTasks.length" class="border-t border-border pt-4">
       <div class="flex items-center justify-between gap-3 pb-3">
         <div class="flex min-w-0 items-center gap-2.5">
           <div
@@ -600,7 +594,7 @@ onBeforeUnmount(() => {
 
       <div
         v-if="activeTasks.length"
-        class="mt-3 divide-y divide-border/60 rounded-xl bg-muted/50 px-3 sm:px-4 dark:divide-border/10"
+        class="mt-3 divide-y divide-border rounded-xl bg-muted/50 px-3 sm:px-4"
       >
         <div v-for="task in activeTasks" :key="task.id" class="py-3 first:pt-3 last:pb-3">
           <div class="flex items-start gap-3">
@@ -697,7 +691,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section v-else class="border-t border-border/70 pt-4 dark:border-border/10">
+    <section v-else class="border-t border-border pt-4">
       <div class="flex items-center gap-2.5 px-3 text-xs text-muted-foreground sm:px-4">
         <div
           class="flex size-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground"

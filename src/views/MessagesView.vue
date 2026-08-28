@@ -46,15 +46,13 @@ const messageActions: MenuOptionData<MessageAction>[] = [
 ]
 
 const messageMenuUi: Partial<MenuUi> = {
-  popup:
-    'w-40 max-w-[calc(100vw-1.5rem)] rounded-xl border border-border/80 bg-card p-1 shadow-lg dark:border-border/10',
+  popup: 'w-40 max-w-[calc(100vw-1.5rem)] rounded-xl border border-border bg-card p-1 shadow-lg',
   item: 'min-h-10 rounded-lg text-destructive hover:bg-destructive/8',
   itemIcon: 'size-3.5 shrink-0 text-destructive',
 }
 
 const peerSwitcherUi: Partial<MenuUi> = {
-  popup:
-    'w-48 max-w-[calc(100vw-2rem)] rounded-xl border border-border/80 bg-card p-1 shadow-lg dark:border-border/10',
+  popup: 'w-48 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card p-1 shadow-lg',
   item: 'min-h-10 rounded-lg',
   itemIcon: 'size-3.5 shrink-0 text-primary',
 }
@@ -268,7 +266,7 @@ onBeforeUnmount(() => {
 
     <div class="flex min-h-0 flex-1 flex-col gap-3 bg-card/30 md:flex-row md:gap-4">
       <aside
-        class="hidden max-h-72 shrink-0 flex-col rounded-2xl border border-foreground/15 bg-card dark:border-border/15 md:flex md:max-h-none md:w-60"
+        class="hidden max-h-72 shrink-0 flex-col rounded-2xl border border-border bg-card md:flex md:max-h-none md:w-60"
       >
         <div class="flex h-14 shrink-0 items-center justify-between gap-3 px-4">
           <div class="flex items-center gap-2">
@@ -572,7 +570,7 @@ onBeforeUnmount(() => {
             "
             aria-label="消息内容"
             :ui="{
-              root: 'rounded-2xl border-border/70 bg-background/60 shadow-none transition-colors focus-within:ring-4 focus-within:ring-primary/10',
+              root: 'rounded-2xl border-border bg-background/60 shadow-none transition-colors focus-within:ring-4 focus-within:ring-primary/10',
               control:
                 'min-h-24 px-4 py-3 text-sm leading-6 placeholder:text-muted-foreground disabled:opacity-70',
             }"

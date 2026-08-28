@@ -343,7 +343,7 @@ onMounted(() => {
 
     <div class="text-xs text-muted-foreground flex items-center gap-2">
       <SIcon icon="lucide:info" class="text-xs" />
-      FlashLAN v{{ appVersion }} · Tauri 2 · Vue 3 · SoybeanUI · UnoCSS · mDNS
+      FlashLAN v{{ appVersion }} · by 蒋思宇
     </div>
   </div>
 </template>

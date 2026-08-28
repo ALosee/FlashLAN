@@ -195,7 +195,7 @@ function doClearHistory() {
       <article
         v-for="item in records"
         :key="item.id"
-        class="group relative overflow-hidden rounded-2xl border border-border/80 bg-card p-3.5 shadow-sm transition-all sm:p-4 dark:border-border/10"
+        class="group relative overflow-hidden rounded-2xl border border-border bg-card p-3.5 shadow-sm transition-all sm:p-4"
       >
         <div class="flex items-start gap-3 sm:gap-4">
           <div
@@ -248,9 +248,7 @@ function doClearHistory() {
               </span>
             </div>
 
-            <div
-              class="mt-3 flex items-center gap-2 border-t border-border/60 pt-3 dark:border-border/10"
-            >
+            <div class="mt-3 flex items-center gap-2 border-t border-border pt-3">
               <div
                 v-if="recordPathLabel(item)"
                 class="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-muted-foreground"
@@ -320,10 +318,7 @@ function doClearHistory() {
       </article>
     </div>
 
-    <div
-      v-else
-      class="rounded-2xl border border-dashed border-border/80 bg-card/60 p-10 text-center dark:border-border/10"
-    >
+    <div v-else class="rounded-2xl border border-dashed border-border bg-card/60 p-10 text-center">
       <div
         class="mx-auto flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground"
       >

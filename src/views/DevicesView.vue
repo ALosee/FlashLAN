@@ -58,8 +58,7 @@ const moreActions = computed<MenuOptionData<MoreAction>[]>(() => [
 ])
 
 const moreMenuUi: Partial<MenuUi> = {
-  popup:
-    'w-32 max-w-[calc(100vw-1.5rem)] rounded-xl border border-border/80 bg-card p-1 shadow-lg dark:border-border/10',
+  popup: 'w-32 max-w-[calc(100vw-1.5rem)] rounded-xl border border-border bg-card p-1 shadow-lg',
   item: 'min-h-10 rounded-lg',
   itemIcon: 'size-3.5 shrink-0 text-primary',
 }
@@ -607,7 +606,7 @@ onBeforeUnmount(() => {
 
     <div
       v-if="deviceStore.devices.length === 0 && !deviceStore.isDiscovering"
-      class="rounded-2xl border border-dashed border-border/80 dark:border-border/10 bg-card/60 p-10 text-center"
+      class="rounded-2xl border border-dashed border-border bg-card/60 p-10 text-center"
     >
       <div
         class="mx-auto flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"
@@ -727,9 +726,7 @@ onBeforeUnmount(() => {
                   />
                 </SButton>
               </div>
-              <div
-                class="mt-4 flex items-end justify-between gap-3 border-t border-border/55 pt-3 dark:border-border/10"
-              >
+              <div class="mt-4 flex items-end justify-between gap-3 border-t border-border pt-3">
                 <div class="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
                   <SIcon icon="lucide:network" class="shrink-0 text-xs opacity-70" />
                   <span>局域网设备</span>

@@ -56,7 +56,6 @@ svg {
 * {
   border-width: 0;
   border-style: solid;
-  border-color: hsl(var(--border) / var(--border-alpha, 1));
 }
 
 /* Mobile safe area - handled by header/bottom nav */
