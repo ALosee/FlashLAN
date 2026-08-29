@@ -7,6 +7,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { SButton } from '@/ui/components/button'
 import { SIcon } from '@/ui/components/icon'
+import { SSkeleton } from '@/ui/components/skeleton'
+import { EmptyState, PageHeader, StatusIndicator } from '@/ui/patterns'
 import { isMobilePlatform, isTauri } from '@/utils/tauri'
 import { useDeviceStore } from '@/stores/device'
 import { type TransferTask, useTransferStore } from '@/stores/transfer'
@@ -295,142 +297,146 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-6xl space-y-5 p-4 md:space-y-6 md:p-6">
+  <div class="fl-page fl-content-send space-y-4 md:space-y-6">
     <!-- Server bind failure banner -->
     <div
       v-if="isTauri() && !serverListening"
       class="flex items-start gap-2 rounded-xl border border-destructive/15 bg-destructive/8 px-4 py-3 text-sm text-destructive"
       role="alert"
     >
-      <SIcon icon="lucide:triangle-alert" class="mt-0.5 shrink-0" />
+      <SIcon icon="lucide:triangle-alert" class="mt-1 shrink-0" />
       <div class="min-w-0">
         <div class="font-medium">文件接收服务未启动</div>
-        <div class="mt-0.5 text-xs">
+        <div class="mt-1 text-xs">
           {{ serverError || '端口 17321 可能被占用' }}，本机无法被其他设备发送文件，请检查后重启应用
         </div>
       </div>
     </div>
 
-    <!-- Header -->
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div class="flex-1 min-w-0">
-        <h1 class="text-xl font-bold tracking-tight">快速传文件</h1>
-        <p class="text-sm text-muted-foreground mt-1">
-          选择文件和设备，一步发送；接收文件会自动显示在这里
-        </p>
-      </div>
-      <div
-        class="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end bg-muted/50 sm:bg-transparent px-3 py-2 sm:p-0 rounded-lg"
-      >
+    <PageHeader title="快速传文件" description="选择文件和设备，一步发送；接收文件会自动显示在这里">
+      <template #status>
         <span class="text-xs text-muted-foreground">本机可被发现</span>
-        <div
-          class="size-2 rounded-full shrink-0"
-          :class="serverListening ? 'bg-success' : 'bg-destructive'"
+        <StatusIndicator
+          :label="serverListening ? '在线' : '服务异常'"
+          :tone="serverListening ? 'success' : 'destructive'"
+          live="polite"
         />
         <span
-          class="text-xs font-medium"
-          :class="serverListening ? 'text-success' : 'text-destructive'"
-        >
-          {{ serverListening ? '在线' : '服务异常' }}
-        </span>
-        <span
           v-if="deviceStore.localDevice"
-          class="text-xs font-mono bg-muted px-2 py-1 rounded truncate max-w-[160px] sm:max-w-none"
+          class="max-w-40 truncate rounded-md bg-muted px-2 py-1 font-mono text-xs sm:max-w-none"
+          :title="[deviceStore.localDevice.ip, deviceStore.localDevice.port].join(':')"
         >
           {{ deviceStore.localDevice.ip }}:{{ deviceStore.localDevice.port }}
         </span>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
     <!-- File upload area -->
     <section
-      class="overflow-hidden rounded-[1.5rem] border border-border p-2"
+      class="overflow-hidden rounded-lg border border-border p-2"
       :class="selectedFiles.length ? 'border-solid' : 'border-dashed'"
       aria-label="文件上传区域"
     >
       <div
-        class="flex min-h-[18rem] cursor-pointer rounded-[1.5rem] flex-col items-center justify-center px-4 py-6 text-center transition-colors sm:min-h-[19rem] sm:px-8 sm:py-7"
-        :class="isDragging ? 'bg-primary/5' : 'bg-card hover:bg-primary/[0.025]'"
+        class="flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-md px-4 py-4 text-center transition-colors sm:min-h-52 sm:px-8 sm:py-6"
+        :class="isDragging ? 'bg-primary/5' : 'bg-card hover:bg-muted/40'"
         @dragover="onDragOver"
         @dragleave="onDragLeave"
         @drop="onDrop"
         @click="pickFiles"
       >
-        <template v-if="selectedFiles.length">
-          <div class="w-full max-w-xl text-left">
+        <Transition name="fl-state" mode="out-in">
+          <div v-if="selectedFiles.length" class="w-full max-w-xl text-left">
             <div class="flex items-center justify-between gap-3">
-              <div class="flex min-w-0 items-center gap-2.5">
+              <div class="flex min-w-0 items-center gap-2">
                 <div
-                  class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
+                  class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-primary"
                 >
                   <SIcon icon="lucide:files" class="text-base" />
                 </div>
                 <div class="min-w-0">
                   <div class="text-sm font-semibold">已选择 {{ selectedFiles.length }} 项</div>
-                  <div class="text-[11px] text-muted-foreground">可继续添加文件或文件夹</div>
+                  <div class="text-xs text-muted-foreground">可继续添加文件或文件夹</div>
                 </div>
               </div>
-              <button
-                type="button"
-                class="shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive"
+              <SButton
+                variant="ghost"
+                color="destructive"
+                size="sm"
+                class="min-h-11 shrink-0 sm:min-h-8"
                 @click.stop="selectedFiles = []"
               >
                 清空
-              </button>
+              </SButton>
             </div>
-            <div class="mt-3 max-h-36 overflow-y-auto rounded-xl bg-muted/35 p-2" @click.stop>
+            <TransitionGroup
+              name="fl-list"
+              tag="div"
+              class="mt-3 max-h-24 overflow-y-auto rounded-lg bg-muted/40 p-2"
+              @click.stop
+            >
               <div
                 v-for="file in selectedFiles"
                 :key="file"
-                class="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/60"
+                class="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-muted/60"
               >
                 <SIcon icon="lucide:file" class="shrink-0 text-xs text-primary" />
-                <span class="min-w-0 flex-1 truncate font-mono text-[11px]" :title="file">
+                <span class="min-w-0 flex-1 truncate font-mono text-xs" :title="file">
                   {{ file }}
                 </span>
                 <button
                   type="button"
-                  class="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
+                  class="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-destructive sm:size-8"
                   aria-label="移除文件"
                   @click="removeSelectedFile(file)"
                 >
                   <SIcon icon="lucide:x" class="text-xs" />
                 </button>
               </div>
-            </div>
+            </TransitionGroup>
             <div class="mt-3 flex flex-wrap gap-2" @click.stop>
-              <SButton size="sm" @click="pickFiles">
+              <SButton size="sm" class="min-h-11 sm:min-h-8" @click="pickFiles">
                 <SIcon icon="lucide:file-plus-2" />
                 继续添加
               </SButton>
-              <SButton v-if="!isMobile" variant="outline" size="sm" @click="pickFolder">
+              <SButton
+                v-if="!isMobile"
+                variant="outline"
+                size="sm"
+                class="min-h-11 sm:min-h-8"
+                @click="pickFolder"
+              >
                 <SIcon icon="lucide:folder-plus" />
                 添加文件夹
               </SButton>
             </div>
           </div>
-        </template>
-        <template v-else>
-          <div
-            class="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-8 ring-primary/[0.035]"
-          >
-            <SIcon icon="lucide:folder-up" class="text-2xl" />
+          <div v-else class="flex flex-col items-center">
+            <div class="flex size-8 items-center justify-center rounded-lg bg-muted text-primary">
+              <SIcon icon="lucide:folder-up" class="text-base" />
+            </div>
+            <div class="mt-3 text-base font-semibold">
+              {{ isDragging ? '松开鼠标添加文件' : '拖拽文件或文件夹到这里' }}
+            </div>
+            <div class="mt-1 text-xs text-muted-foreground">也可以点击下方按钮选择内容</div>
+            <div class="mt-4 flex flex-wrap justify-center gap-2" @click.stop>
+              <SButton size="md" class="min-h-11 sm:min-h-8" @click="pickFiles">
+                <SIcon icon="lucide:file-plus-2" />
+                选择文件
+              </SButton>
+              <SButton
+                v-if="!isMobile"
+                variant="outline"
+                size="md"
+                class="min-h-11 sm:min-h-8"
+                @click="pickFolder"
+              >
+                <SIcon icon="lucide:folder-plus" />
+                选择文件夹
+              </SButton>
+            </div>
           </div>
-          <div class="mt-4 text-base font-semibold">
-            {{ isDragging ? '松开鼠标添加文件' : '拖拽文件或文件夹到这里' }}
-          </div>
-          <div class="mt-1 text-xs text-muted-foreground">也可以点击下方按钮选择内容</div>
-          <div class="mt-5 flex flex-wrap justify-center gap-2.5" @click.stop>
-            <SButton size="md" @click="pickFiles">
-              <SIcon icon="lucide:file-plus-2" />
-              选择文件
-            </SButton>
-            <SButton v-if="!isMobile" variant="outline" size="md" @click="pickFolder">
-              <SIcon icon="lucide:folder-plus" />
-              选择文件夹
-            </SButton>
-          </div>
-        </template>
+        </Transition>
       </div>
     </section>
 
@@ -440,9 +446,9 @@ onBeforeUnmount(() => {
         <div class="min-w-0 flex-1">
           <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
             <div class="flex min-w-0 flex-1 items-center justify-between gap-3">
-              <div class="flex min-w-0 items-center gap-2.5">
+              <div class="flex min-w-0 items-center gap-2">
                 <div
-                  class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
+                  class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-primary"
                 >
                   <SIcon icon="lucide:send-to-back" class="text-base" />
                 </div>
@@ -459,7 +465,7 @@ onBeforeUnmount(() => {
                 <span class="shrink-0 whitespace-nowrap">{{ onlineDevices.length }} 台在线</span>
                 <button
                   type="button"
-                  class="flex size-7 shrink-0 appearance-none items-center justify-center rounded-md border-0 bg-transparent p-0 text-primary outline-none transition-colors focus-visible:ring-3 focus-visible:ring-primary/30 hover:bg-primary/10 active:bg-primary/15 disabled:cursor-not-allowed disabled:bg-transparent disabled:opacity-50"
+                  class="flex size-11 shrink-0 appearance-none items-center justify-center rounded-md border-0 bg-transparent p-0 text-primary outline-none transition-colors focus-visible:ring-3 focus-visible:ring-primary/30 hover:bg-primary/10 active:bg-primary/15 disabled:cursor-not-allowed disabled:bg-transparent disabled:opacity-50 sm:size-8"
                   :disabled="deviceStore.isDiscovering"
                   :aria-label="deviceStore.isDiscovering ? '正在刷新附近设备' : '刷新附近设备'"
                   :aria-busy="deviceStore.isDiscovering"
@@ -485,59 +491,74 @@ onBeforeUnmount(() => {
           </div>
           <div
             v-if="deviceStore.error"
-            class="mt-2 flex items-start gap-1.5 text-[11px] text-destructive"
+            class="mt-2 flex items-start gap-2 text-xs text-destructive"
             role="alert"
           >
-            <SIcon icon="lucide:circle-alert" class="mt-0.5 shrink-0 text-xs" />
-            <span>{{ deviceStore.error }}123</span>
+            <SIcon icon="lucide:circle-alert" class="mt-1 shrink-0 text-xs" />
+            <span>{{ deviceStore.error }}</span>
           </div>
-          <div
-            v-if="onlineDevices.length"
-            class="-mx-1 mt-3 flex flex-nowrap gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0"
-          >
-            <button
-              v-for="device in onlineDevices"
-              :key="device.id"
-              type="button"
-              class="group inline-flex min-w-0 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-all"
-              :class="
-                selectedDevice?.id === device.id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted/60 text-foreground hover:bg-primary/10 hover:text-primary'
-              "
-              @click="selectedDeviceId = device.id"
+          <Transition name="fl-state" mode="out-in">
+            <div
+              v-if="deviceStore.isDiscovering"
+              key="loading"
+              class="mt-3 flex gap-2 overflow-hidden"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
             >
-              <SIcon
-                :icon="device.platform === 'windows' ? 'lucide:monitor' : 'lucide:smartphone'"
-                class="shrink-0 text-xs"
-              />
-              <span class="max-w-40 truncate">{{ device.alias || device.name }}</span>
-              <SIcon
-                icon="lucide:check"
-                class="shrink-0 text-xs transition-opacity"
+              <span class="sr-only">正在刷新可用设备</span>
+              <SSkeleton v-for="item in 3" :key="item" class="h-11 w-32 shrink-0 sm:h-8" />
+            </div>
+            <TransitionGroup
+              v-else-if="onlineDevices.length"
+              key="devices"
+              name="fl-list"
+              tag="div"
+              class="-mx-1 mt-3 flex flex-nowrap gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0"
+            >
+              <button
+                v-for="device in onlineDevices"
+                :key="device.id"
+                type="button"
+                class="group inline-flex min-h-11 min-w-0 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-all sm:min-h-8"
                 :class="
                   selectedDevice?.id === device.id
-                    ? 'opacity-100'
-                    : 'opacity-0 group-hover:opacity-40'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted/60 text-foreground hover:bg-primary/10 hover:text-primary'
                 "
-              />
-            </button>
-          </div>
-          <div
-            v-else
-            class="mt-3 flex min-h-20 items-center justify-center rounded-xl border border-dashed border-border bg-muted/15 px-4 py-3"
-          >
-            <div class="flex items-center gap-2 text-xs text-muted-foreground">
-              <SIcon icon="lucide:scan-search" />
-              <span>暂无在线设备</span>
-              <SButton variant="link" size="xs" class="h-auto p-0" @click="openDevices">
-                去添加
-              </SButton>
-            </div>
-          </div>
+                @click="selectedDeviceId = device.id"
+              >
+                <SIcon
+                  :icon="device.platform === 'windows' ? 'lucide:monitor' : 'lucide:smartphone'"
+                  class="shrink-0 text-xs"
+                />
+                <span class="max-w-40 truncate">{{ device.alias || device.name }}</span>
+                <SIcon
+                  icon="lucide:check"
+                  class="shrink-0 text-xs transition-opacity"
+                  :class="
+                    selectedDevice?.id === device.id
+                      ? 'opacity-100'
+                      : 'opacity-0 group-hover:opacity-40'
+                  "
+                />
+              </button>
+            </TransitionGroup>
+            <EmptyState
+              v-else
+              key="empty"
+              class="mt-3"
+              icon="lucide:scan-search"
+              title="暂无在线设备"
+              description="刷新发现，或前往附近设备手动添加"
+              action-label="管理设备"
+              compact
+              @action="openDevices"
+            />
+          </Transition>
           <SButton
             size="lg"
-            class="mt-3 w-full whitespace-nowrap lg:hidden"
+            class="mt-3 min-h-11 w-full whitespace-nowrap lg:hidden"
             :disabled="!canSendFiles"
             @click="selectedDevice && sendFilesTo(selectedDevice)"
           >
@@ -546,37 +567,38 @@ onBeforeUnmount(() => {
           </SButton>
         </div>
       </div>
-      <div
-        v-if="sendError"
-        class="mt-2 flex items-start gap-1.5 text-[11px] text-destructive"
-        role="alert"
-      >
-        <SIcon icon="lucide:circle-alert" class="mt-0.5 shrink-0 text-xs" />
-        <span>{{ sendError }}</span>
-      </div>
+      <Transition name="fl-state">
+        <div
+          v-if="sendError"
+          class="mt-2 flex items-start gap-2 text-xs text-destructive"
+          role="alert"
+        >
+          <SIcon icon="lucide:circle-alert" class="mt-1 shrink-0 text-xs" />
+          <span>{{ sendError }}</span>
+        </div>
+      </Transition>
     </section>
 
     <!-- Transfer activity -->
     <section v-if="activeTasks.length || finishedTasks.length" class="border-t border-border pt-4">
       <div class="flex items-center justify-between gap-3 pb-3">
-        <div class="flex min-w-0 items-center gap-2.5">
+        <div class="flex min-w-0 items-center gap-2">
           <div
-            class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
+            class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-primary"
           >
             <SIcon icon="lucide:arrow-left-right" class="text-base" />
           </div>
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <h2 class="text-sm font-semibold leading-5">传输任务</h2>
-              <span
+              <StatusIndicator
                 v-if="activeTasks.length"
-                class="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary"
-              >
-                <span class="size-1.5 rounded-full bg-primary" />
-                {{ activeTasks.length }} 个进行中
-              </span>
+                :label="`${activeTasks.length} 个进行中`"
+                tone="primary"
+                pulse
+              />
             </div>
-            <p class="mt-0.5 text-[11px] text-muted-foreground">
+            <p class="mt-1 text-xs text-muted-foreground">
               {{ activeTasks.length ? '实时同步文件收发状态' : '本次传输已全部处理完成' }}
             </p>
           </div>
@@ -592,13 +614,17 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <div
+      <TransitionGroup
         v-if="activeTasks.length"
-        class="mt-3 divide-y divide-border rounded-xl bg-muted/50 px-3 sm:px-4"
+        name="fl-list"
+        tag="div"
+        class="mt-3 divide-y divide-border overflow-hidden rounded-lg border border-border bg-card"
       >
-        <div v-for="task in activeTasks" :key="task.id" class="py-3 first:pt-3 last:pb-3">
+        <div v-for="task in activeTasks" :key="task.id" class="px-3 py-3 sm:px-4">
           <div class="flex items-start gap-3">
-            <div class="flex size-8 shrink-0 items-center justify-center rounded-lg text-primary">
+            <div
+              class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-primary"
+            >
               <SIcon
                 :icon="task.direction === 'receive' ? 'lucide:download' : 'lucide:file-up'"
                 class="text-sm"
@@ -611,7 +637,7 @@ onBeforeUnmount(() => {
                     {{ task.fileName }}
                   </div>
                   <div
-                    class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground"
+                    class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
                   >
                     <span>
                       {{ task.direction === 'receive' ? '接收自' : '发送至' }} {{ task.targetIp }}
@@ -620,26 +646,22 @@ onBeforeUnmount(() => {
                     <span v-if="task.speed">{{ formatSpeed(task.speed) }}</span>
                   </div>
                 </div>
-                <span
-                  class="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary"
-                >
-                  <SIcon
-                    :icon="task.status === 'pending' ? 'lucide:clock-3' : 'lucide:loader-circle'"
-                    class="text-[11px]"
-                    :class="task.status === 'transferring' ? 'animate-spin' : ''"
-                  />
-                  {{ statusLabel(task) }}
-                </span>
+                <StatusIndicator
+                  class="shrink-0"
+                  :label="statusLabel(task)"
+                  tone="primary"
+                  :pulse="task.status === 'transferring'"
+                />
               </div>
 
-              <div class="mt-2.5 flex items-center gap-2.5">
+              <div class="mt-2 flex items-center gap-2">
                 <div class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
                   <div
                     class="h-full rounded-full bg-primary transition-all duration-500"
                     :style="{ width: `${task.progress}%` }"
                   />
                 </div>
-                <span class="shrink-0 text-[11px] font-semibold tabular-nums text-foreground">
+                <span class="shrink-0 text-xs font-semibold tabular-nums text-foreground">
                   {{ task.progress.toFixed(0) }}%
                 </span>
                 <SButton
@@ -647,7 +669,7 @@ onBeforeUnmount(() => {
                   color="destructive"
                   size="sm"
                   shape="square"
-                  class="size-7 shrink-0"
+                  class="size-11 shrink-0 sm:size-8"
                   aria-label="取消传输"
                   title="取消传输"
                   @click="cancelTransfer(task)"
@@ -656,7 +678,7 @@ onBeforeUnmount(() => {
                 </SButton>
               </div>
               <div
-                class="mt-1.5 flex items-center justify-between gap-3 text-[11px] text-muted-foreground"
+                class="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground"
               >
                 <span v-if="task.error" class="min-w-0 truncate text-destructive">
                   {{ task.error }}
@@ -670,10 +692,10 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
-      </div>
+      </TransitionGroup>
 
-      <div v-else class="mt-3 flex items-center gap-2.5 rounded-xl bg-muted/50 px-3 py-3 sm:px-4">
-        <div class="flex size-9 shrink-0 items-center justify-center rounded-xl text-success">
+      <div v-else class="mt-3 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-3 sm:px-4">
+        <div class="flex size-8 shrink-0 items-center justify-center rounded-lg text-success">
           <SIcon icon="lucide:check" class="text-sm" />
         </div>
         <p class="min-w-0 flex-1 text-xs text-muted-foreground">
@@ -692,9 +714,9 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-else class="border-t border-border pt-4">
-      <div class="flex items-center gap-2.5 px-3 text-xs text-muted-foreground sm:px-4">
+      <div class="flex items-center gap-2 px-3 text-xs text-muted-foreground sm:px-4">
         <div
-          class="flex size-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground"
+          class="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground"
         >
           <SIcon icon="lucide:arrow-left-right" class="text-sm" />
         </div>

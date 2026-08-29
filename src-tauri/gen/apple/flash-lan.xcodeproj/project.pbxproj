@@ -1,0 +1,466 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1EFADD196DC5C7C2C4714D1F /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 256AEE1B1BC30687EDE2CB83 /* Metal.framework */; };
+		21599900C6E33FD0DA000AF4 /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A20F1585D5C3966C1AF7FFB9 /* libapp.a */; };
+		3F57D2E3E54740659E3C3565 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 576F58218354EFA665C3FFB5 /* UIKit.framework */; };
+		59DF46CD65DD6624EEDF08E2 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ADC40C30474BBA07FC6CA1DF /* MetalKit.framework */; };
+		6BC95E7505B99A3D6EBF3D81 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1F9123E8ABACA229466C25B4 /* QuartzCore.framework */; };
+		73B4CB203EDD75CF2B123B24 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 05EA6923B01DF69320E1CB07 /* assets */; };
+		750DF6F6ACF3C1AFE384AC92 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 144A5C68F5B45F71AFE0EA61 /* CoreGraphics.framework */; };
+		A15EA5B4538B47FE42AA16BD /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F3D227417FD007E7B5AF440D /* Security.framework */; };
+		DEB43AF2EB8E06BE7E6183DF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E9B30A437C279AEFE07856C2 /* LaunchScreen.storyboard */; };
+		E728CBAD70F93AB083ECE5C1 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 8FB062E535519B72AFED556D /* main.mm */; };
+		EA8ADEDAB71BB2C1DB97FD8A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1B2AA8F76A42C0E088027CDC /* Assets.xcassets */; };
+		ED5B3B190B8F9B7E8B2B2EB1 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA2A1E847A080F6312C1DE6F /* WebKit.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		05EA6923B01DF69320E1CB07 /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
+		144A5C68F5B45F71AFE0EA61 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		1760A0AEEBBB2AB508095B3C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		1B2AA8F76A42C0E088027CDC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		1F9123E8ABACA229466C25B4 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		256AEE1B1BC30687EDE2CB83 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		2DDA25A0131FB298B32ECC89 /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		4DFEC721A335379008B36095 /* transfer.rs */ = {isa = PBXFileReference; path = transfer.rs; sourceTree = "<group>"; };
+		576F58218354EFA665C3FFB5 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		5A5D844336CD4D7EC523FB66 /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
+		8FB062E535519B72AFED556D /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		A20F1585D5C3966C1AF7FFB9 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		ADC40C30474BBA07FC6CA1DF /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		BA2A1E847A080F6312C1DE6F /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		BDE3E4011267F99A8BDD1F3E /* discovery.rs */ = {isa = PBXFileReference; path = discovery.rs; sourceTree = "<group>"; };
+		BF93C9C433C6448144D602D8 /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
+		C0F5B9850E5BDCF778FD3B26 /* flash-lan_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "flash-lan_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		D1612F0780256B4FB7F470E6 /* security.rs */ = {isa = PBXFileReference; path = security.rs; sourceTree = "<group>"; };
+		D5DF42E852DE9A2009AB61EF /* flash-lan_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "flash-lan_iOS.entitlements"; sourceTree = "<group>"; };
+		E9B30A437C279AEFE07856C2 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		F3D227417FD007E7B5AF440D /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		9D56DF3D8BEE6B951B8E5DCD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				21599900C6E33FD0DA000AF4 /* libapp.a in Frameworks */,
+				750DF6F6ACF3C1AFE384AC92 /* CoreGraphics.framework in Frameworks */,
+				1EFADD196DC5C7C2C4714D1F /* Metal.framework in Frameworks */,
+				59DF46CD65DD6624EEDF08E2 /* MetalKit.framework in Frameworks */,
+				6BC95E7505B99A3D6EBF3D81 /* QuartzCore.framework in Frameworks */,
+				A15EA5B4538B47FE42AA16BD /* Security.framework in Frameworks */,
+				3F57D2E3E54740659E3C3565 /* UIKit.framework in Frameworks */,
+				ED5B3B190B8F9B7E8B2B2EB1 /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		05F804CD25011A77055D756C /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				8D953AFCD93FB59BA7D46E28 /* flash-lan */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		0E8D3B28894C88DE7A7DC860 /* Externals */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Externals;
+			sourceTree = "<group>";
+		};
+		0F267187ACB1DDA5865D92CC /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				144A5C68F5B45F71AFE0EA61 /* CoreGraphics.framework */,
+				A20F1585D5C3966C1AF7FFB9 /* libapp.a */,
+				256AEE1B1BC30687EDE2CB83 /* Metal.framework */,
+				ADC40C30474BBA07FC6CA1DF /* MetalKit.framework */,
+				1F9123E8ABACA229466C25B4 /* QuartzCore.framework */,
+				F3D227417FD007E7B5AF440D /* Security.framework */,
+				576F58218354EFA665C3FFB5 /* UIKit.framework */,
+				BA2A1E847A080F6312C1DE6F /* WebKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		1350F4AA246280C8B22707C5 = {
+			isa = PBXGroup;
+			children = (
+				05EA6923B01DF69320E1CB07 /* assets */,
+				1B2AA8F76A42C0E088027CDC /* Assets.xcassets */,
+				E9B30A437C279AEFE07856C2 /* LaunchScreen.storyboard */,
+				0E8D3B28894C88DE7A7DC860 /* Externals */,
+				EC02926B0A09FDE483370151 /* flash-lan_iOS */,
+				05F804CD25011A77055D756C /* Sources */,
+				402AB3E4580C60665A525B42 /* src */,
+				0F267187ACB1DDA5865D92CC /* Frameworks */,
+				666487CCAF138DF13D114644 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		2F0E74E0700E9B31E8E0101D /* bindings */ = {
+			isa = PBXGroup;
+			children = (
+				BF93C9C433C6448144D602D8 /* bindings.h */,
+			);
+			path = bindings;
+			sourceTree = "<group>";
+		};
+		402AB3E4580C60665A525B42 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				BDE3E4011267F99A8BDD1F3E /* discovery.rs */,
+				2DDA25A0131FB298B32ECC89 /* lib.rs */,
+				5A5D844336CD4D7EC523FB66 /* main.rs */,
+				D1612F0780256B4FB7F470E6 /* security.rs */,
+				4DFEC721A335379008B36095 /* transfer.rs */,
+			);
+			name = src;
+			path = ../../src;
+			sourceTree = "<group>";
+		};
+		666487CCAF138DF13D114644 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C0F5B9850E5BDCF778FD3B26 /* flash-lan_iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8D953AFCD93FB59BA7D46E28 /* flash-lan */ = {
+			isa = PBXGroup;
+			children = (
+				8FB062E535519B72AFED556D /* main.mm */,
+				2F0E74E0700E9B31E8E0101D /* bindings */,
+			);
+			path = "flash-lan";
+			sourceTree = "<group>";
+		};
+		EC02926B0A09FDE483370151 /* flash-lan_iOS */ = {
+			isa = PBXGroup;
+			children = (
+				D5DF42E852DE9A2009AB61EF /* flash-lan_iOS.entitlements */,
+				1760A0AEEBBB2AB508095B3C /* Info.plist */,
+			);
+			path = "flash-lan_iOS";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		FB3749B6EC3B05A3C6B0397F /* flash-lan_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268034C55E56A39601A2E336 /* Build configuration list for PBXNativeTarget "flash-lan_iOS" */;
+			buildPhases = (
+				980CC6627B77A258021CE9C1 /* Build Rust Code */,
+				1767628054403D0DA459E135 /* Sources */,
+				3E562BCD135E8E5E2C39BED7 /* Resources */,
+				9D56DF3D8BEE6B951B8E5DCD /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "flash-lan_iOS";
+			packageProductDependencies = (
+			);
+			productName = "flash-lan_iOS";
+			productReference = C0F5B9850E5BDCF778FD3B26 /* flash-lan_iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A236E23DA9EB3A27625161BA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 7133AFB35BD8F8DAFFEA1B33 /* Build configuration list for PBXProject "flash-lan" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 1350F4AA246280C8B22707C5;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 666487CCAF138DF13D114644 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				FB3749B6EC3B05A3C6B0397F /* flash-lan_iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3E562BCD135E8E5E2C39BED7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EA8ADEDAB71BB2C1DB97FD8A /* Assets.xcassets in Resources */,
+				DEB43AF2EB8E06BE7E6183DF /* LaunchScreen.storyboard in Resources */,
+				73B4CB203EDD75CF2B123B24 /* assets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		980CC6627B77A258021CE9C1 /* Build Rust Code */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust Code";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a",
+				"$(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "pnpm tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1767628054403D0DA459E135 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E728CBAD70F93AB083ECE5C1 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1057827E62B11D7E689CFFF1 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = debug;
+		};
+		6ECA4407BBCB42D5ECF1FE54 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "flash-lan_iOS/flash-lan_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "flash-lan_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.flashlan.app;
+				PRODUCT_NAME = FlashLAN;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = release;
+		};
+		7A54190ABD4CB0C232498233 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = release;
+		};
+		F708170D11C8B86F69B08F4A /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "flash-lan_iOS/flash-lan_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "flash-lan_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.flashlan.app;
+				PRODUCT_NAME = FlashLAN;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		268034C55E56A39601A2E336 /* Build configuration list for PBXNativeTarget "flash-lan_iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F708170D11C8B86F69B08F4A /* debug */,
+				6ECA4407BBCB42D5ECF1FE54 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+		7133AFB35BD8F8DAFFEA1B33 /* Build configuration list for PBXProject "flash-lan" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1057827E62B11D7E689CFFF1 /* debug */,
+				7A54190ABD4CB0C232498233 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A236E23DA9EB3A27625161BA /* Project object */;
+}

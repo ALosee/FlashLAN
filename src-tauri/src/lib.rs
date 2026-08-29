@@ -332,7 +332,7 @@ pub struct ServerListening(pub std::sync::Arc<std::sync::atomic::AtomicBool>);
 pub fn run() {
     let mut builder = tauri::Builder::default();
 
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         builder = builder.plugin(tauri_plugin_barcode_scanner::init());
     }

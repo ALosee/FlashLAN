@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write
 
+env:
+  RELEASE_BODY: |
+    FlashLAN desktop, Android and iOS release.
+    iOS is uploaded to TestFlight when the repository's iOS release credentials are enabled.
+
 jobs:
   macos:
     runs-on: macos-latest
@@ -47,8 +52,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: FlashLAN v__VERSION__
-          releaseBody: |
-            FlashLAN desktop (macOS and Windows) and Android builds.
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }} --bundles dmg
@@ -84,8 +88,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: FlashLAN v__VERSION__
-          releaseBody: |
-            FlashLAN desktop, Windows, and Android builds.
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: true
           prerelease: false
           args: --target x86_64-pc-windows-msvc --bundles nsis,msi
@@ -162,8 +165,80 @@ jobs:
           mobile: android
           tagName: v__VERSION__
           releaseName: FlashLAN v__VERSION__
-          releaseBody: Android APK.
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: true
           prerelease: false
           args: --apk
           releaseAssetNamePattern: FlashLAN-android-[arch][ext]
+
+  ios:
+    if: ${{ vars.IOS_RELEASE_ENABLED == 'true' }}
+    runs-on: macos-latest
+    env:
+      APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install iOS build tools
+        run: brew install cocoapods xcodegen libimobiledevice
+
+      - name: Validate iOS release credentials
+        shell: bash
+        run: |
+          test -n "$APPLE_DEVELOPMENT_TEAM" || { echo "Missing APPLE_DEVELOPMENT_TEAM secret"; exit 1; }
+          test -n "$APPLE_API_ISSUER" || { echo "Missing APPLE_API_ISSUER secret"; exit 1; }
+          test -n "$APPLE_API_KEY" || { echo "Missing APPLE_API_KEY secret"; exit 1; }
+          test -n "$APPLE_API_KEY_BASE64" || { echo "Missing APPLE_API_KEY_BASE64 secret"; exit 1; }
+
+      - name: Configure App Store Connect API key
+        shell: bash
+        run: |
+          key_dir="$HOME/.appstoreconnect/private_keys"
+          key_path="$key_dir/AuthKey_${APPLE_API_KEY}.p8"
+          mkdir -p "$key_dir"
+          printf '%s' "$APPLE_API_KEY_BASE64" | openssl base64 -d -A > "$key_path"
+          chmod 600 "$key_path"
+          echo "APPLE_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Initialize iOS project
+        run: pnpm tauri ios init --ci --skip-targets-install
+
+      - name: Build signed iOS IPA
+        run: pnpm tauri ios build --ci --build-number "$GITHUB_RUN_NUMBER" --export-method app-store-connect
+
+      - name: Upload iOS build to TestFlight
+        shell: bash
+        run: |
+          ipa_path="$(find src-tauri/gen/apple/build/arm64 -maxdepth 1 -name '*.ipa' -print -quit)"
+          test -n "$ipa_path" || { echo "iOS IPA was not generated"; exit 1; }
+          xcrun altool --upload-app --type ios --file "$ipa_path" --apiKey "$APPLE_API_KEY" --apiIssuer "$APPLE_API_ISSUER"
+
+      - name: Archive signed iOS IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlashLAN-ios-${{ github.ref_name }}
+          path: src-tauri/gen/apple/build/arm64/*.ipa
+          if-no-files-found: error

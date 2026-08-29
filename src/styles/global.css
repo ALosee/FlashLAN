@@ -30,6 +30,120 @@ body {
   width: 100%;
 }
 
+:root {
+  --fl-sidebar-width: 14rem;
+  --fl-content-send-width: 64rem;
+  --fl-content-list-width: 60rem;
+  --fl-content-settings-width: 45rem;
+  --fl-motion-fast: 150ms;
+  --fl-motion-standard: 180ms;
+  --fl-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.fl-page {
+  width: 100%;
+  margin-inline: auto;
+  padding: 1rem;
+}
+
+.fl-sidebar-width {
+  width: var(--fl-sidebar-width);
+}
+
+.fl-content-send {
+  max-width: var(--fl-content-send-width);
+}
+
+.fl-content-list {
+  max-width: var(--fl-content-list-width);
+}
+
+.fl-content-settings {
+  max-width: var(--fl-content-settings-width);
+}
+
+@media (min-width: 768px) {
+  .fl-page {
+    padding: 1.5rem;
+  }
+}
+
+.fl-page-view-enter-active,
+.fl-page-view-leave-active,
+.fl-state-enter-active,
+.fl-state-leave-active,
+.fl-list-enter-active,
+.fl-list-leave-active,
+.fl-list-move {
+  transition:
+    opacity var(--fl-motion-fast) var(--fl-motion-ease),
+    transform var(--fl-motion-fast) var(--fl-motion-ease);
+}
+
+.fl-page-view-enter-from,
+.fl-state-enter-from,
+.fl-list-enter-from {
+  opacity: 0;
+  transform: translateY(0.25rem);
+}
+
+.fl-page-view-leave-to,
+.fl-state-leave-to,
+.fl-list-leave-to {
+  opacity: 0;
+  transform: translateY(-0.25rem);
+}
+
+.fl-drawer-enter-active,
+.fl-drawer-leave-active,
+.fl-dialog-enter-active,
+.fl-dialog-leave-active,
+.fl-float-enter-active,
+.fl-float-leave-active {
+  transition: opacity var(--fl-motion-standard) var(--fl-motion-ease);
+}
+
+.fl-drawer-enter-active .fl-drawer-panel,
+.fl-drawer-leave-active .fl-drawer-panel,
+.fl-dialog-enter-active .fl-dialog-panel,
+.fl-dialog-leave-active .fl-dialog-panel,
+.fl-float-enter-active,
+.fl-float-leave-active {
+  transition: transform var(--fl-motion-standard) var(--fl-motion-ease);
+}
+
+.fl-drawer-enter-from,
+.fl-drawer-leave-to,
+.fl-dialog-enter-from,
+.fl-dialog-leave-to,
+.fl-float-enter-from,
+.fl-float-leave-to {
+  opacity: 0;
+}
+
+.fl-drawer-enter-from .fl-drawer-panel,
+.fl-drawer-leave-to .fl-drawer-panel {
+  transform: translateX(-0.75rem);
+}
+
+.fl-dialog-enter-from .fl-dialog-panel,
+.fl-dialog-leave-to .fl-dialog-panel,
+.fl-float-enter-from,
+.fl-float-leave-to {
+  transform: translateY(0.5rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 body {
   margin: 0;
   background-color: hsl(var(--background));

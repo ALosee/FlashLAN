@@ -419,7 +419,7 @@ export const buttonVariants = cv({
     variant: 'solid',
     size: 'md',
     shape: 'auto',
-    shadow: 'sm',
+    shadow: 'none',
     fitContent: false
   }
 });

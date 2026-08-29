@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/ios-schema.json",
+  "identifier": "ios-capabilities",
+  "description": "Permissions only available on the iOS build",
+  "platforms": ["iOS"],
+  "windows": ["main"],
+  "permissions": [
+    "barcode-scanner:allow-scan",
+    "barcode-scanner:allow-cancel",
+    "barcode-scanner:allow-check-permissions",
+    "barcode-scanner:allow-request-permissions"
+  ]
+}

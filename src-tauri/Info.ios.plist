@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>NSBonjourServices</key>
+    <array>
+      <string>_flashlan._tcp</string>
+    </array>
+    <key>NSCameraUsageDescription</key>
+    <string>用于扫描其他 FlashLAN 设备的连接二维码。</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>用于发现并连接同一局域网内的 FlashLAN 设备，以传输文件和消息。</string>
+  </dict>
+</plist>

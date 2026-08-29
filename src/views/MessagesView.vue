@@ -6,6 +6,7 @@ import type { MenuOptionData, MenuUi } from '@soybeanjs/headless'
 import { SButton } from '@/ui/components/button'
 import { SButtonIcon } from '@/ui/components/button'
 import { SIcon } from '@/ui/components/icon'
+import { SSkeleton } from '@/ui/components/skeleton'
 import { useDeviceStore } from '@/stores/device'
 import { normalizePeerAddress, type TextMessageItem, useTransferStore } from '@/stores/transfer'
 
@@ -271,7 +272,7 @@ onBeforeUnmount(() => {
         <div class="flex h-14 shrink-0 items-center justify-between gap-3 px-4">
           <div class="flex items-center gap-2">
             <span class="text-xs font-semibold">设备列表</span>
-            <span class="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            <span class="rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
               {{ peerRows.length }}
             </span>
           </div>
@@ -293,63 +294,86 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="min-h-0 flex-1 overflow-y-auto p-3">
-          <div v-if="peerRows.length" class="space-y-1">
-            <button
-              v-for="peer in peerRows"
-              :key="peer.key"
-              type="button"
-              class="flex w-full min-w-0 items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition-colors"
-              :class="
-                selectedPeer?.key === peer.key
-                  ? 'bg-primary/10 text-foreground ring-1 ring-inset ring-primary/25'
-                  : 'text-foreground hover:bg-muted/70'
-              "
-              @click="selectedPeerKey = peer.key"
-            >
-              <span
-                class="flex size-9 shrink-0 items-center justify-center rounded-xl"
-                :class="
-                  peer.online ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                "
-              >
-                <SIcon icon="lucide:monitor-smartphone" class="text-sm" />
-              </span>
-              <span class="min-w-0 flex-1">
-                <span class="flex items-center justify-between gap-2">
-                  <span class="flex min-w-0 items-center gap-1.5">
-                    <span class="min-w-0 truncate text-xs font-semibold">{{ peer.name }}</span>
-                    <span
-                      class="size-1.5 shrink-0 rounded-full"
-                      :class="peer.online ? 'bg-success' : 'bg-muted-foreground/40'"
-                      :title="peer.online ? '在线' : '离线'"
-                    />
-                  </span>
-                  <span v-if="peer.latestAt" class="shrink-0 text-[9px] text-muted-foreground">
-                    {{ formatMessageTime(peer.latestAt) }}
-                  </span>
-                </span>
-                <span class="mt-0.5 block truncate text-[10px] text-muted-foreground">
-                  {{ peer.latestText }}
-                </span>
-              </span>
-            </button>
-          </div>
-          <div v-else class="flex min-h-36 flex-col items-center justify-center px-3 text-center">
+          <Transition name="fl-state" mode="out-in">
             <div
-              class="flex size-11 items-center justify-center rounded-2xl bg-muted text-muted-foreground"
+              v-if="deviceStore.isDiscovering"
+              key="loading"
+              class="space-y-2"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
             >
-              <SIcon icon="lucide:messages-square" class="text-xl" />
+              <span class="sr-only">正在刷新设备列表</span>
+              <div v-for="row in 3" :key="row" class="flex min-h-14 items-center gap-2 px-2">
+                <SSkeleton class="size-9 shrink-0 rounded-lg" />
+                <div class="min-w-0 flex-1">
+                  <SSkeleton class="h-3 w-24 max-w-full" />
+                  <SSkeleton class="mt-2 h-3 w-32 max-w-full" />
+                </div>
+              </div>
             </div>
-            <p class="mt-3 text-xs font-medium">还没有可用对话</p>
-            <p class="mt-1 text-[11px] text-muted-foreground">先添加一个附近设备</p>
-            <SButton variant="link" size="xs" class="mt-1 h-auto p-0" @click="openDevices">
-              去附近设备添加
-            </SButton>
-          </div>
+            <div v-else-if="peerRows.length" key="peers" class="space-y-1">
+              <button
+                v-for="peer in peerRows"
+                :key="peer.key"
+                type="button"
+                class="flex w-full min-w-0 items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition-colors"
+                :class="
+                  selectedPeer?.key === peer.key
+                    ? 'bg-primary/10 text-foreground ring-1 ring-inset ring-primary/25'
+                    : 'text-foreground hover:bg-muted/70'
+                "
+                @click="selectedPeerKey = peer.key"
+              >
+                <span
+                  class="flex size-9 shrink-0 items-center justify-center rounded-xl"
+                  :class="
+                    peer.online ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                  "
+                >
+                  <SIcon icon="lucide:monitor-smartphone" class="text-sm" />
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="flex items-center justify-between gap-2">
+                    <span class="flex min-w-0 items-center gap-1.5">
+                      <span class="min-w-0 truncate text-xs font-semibold">{{ peer.name }}</span>
+                      <span
+                        class="size-1.5 shrink-0 rounded-full"
+                        :class="peer.online ? 'bg-success' : 'bg-muted-foreground/40'"
+                        :title="peer.online ? '在线' : '离线'"
+                      />
+                    </span>
+                    <span v-if="peer.latestAt" class="shrink-0 text-xs text-muted-foreground">
+                      {{ formatMessageTime(peer.latestAt) }}
+                    </span>
+                  </span>
+                  <span class="mt-1 block truncate text-xs text-muted-foreground">
+                    {{ peer.latestText }}
+                  </span>
+                </span>
+              </button>
+            </div>
+            <div
+              v-else
+              key="empty"
+              class="flex min-h-36 flex-col items-center justify-center px-3 text-center"
+            >
+              <div
+                class="flex size-11 items-center justify-center rounded-xl bg-muted text-muted-foreground"
+              >
+                <SIcon icon="lucide:messages-square" class="text-xl" />
+              </div>
+              <p class="mt-3 text-xs font-medium">还没有可用对话</p>
+              <p class="mt-1 text-xs text-muted-foreground">先添加一个附近设备</p>
+              <SButton variant="link" size="xs" class="mt-1 h-auto p-0" @click="openDevices">
+                去附近设备添加
+              </SButton>
+            </div>
+          </Transition>
         </div>
 
         <div
-          class="flex shrink-0 items-center justify-between gap-2 px-4 py-3 text-[10px] text-muted-foreground"
+          class="flex shrink-0 items-center justify-between gap-2 px-4 py-3 text-xs text-muted-foreground"
         >
           <span>{{ onlineCount }} 台设备在线</span>
           <button type="button" class="hover:text-primary" @click="openDevices">管理设备</button>
@@ -396,7 +420,7 @@ onBeforeUnmount(() => {
                     </span>
                     <span
                       v-if="selectedPeer.ip"
-                      class="block truncate font-mono text-[10px] text-muted-foreground"
+                      class="block truncate font-mono text-xs text-muted-foreground"
                     >
                       {{ selectedPeer.ip }}:{{ selectedPeer.port }}
                     </span>
@@ -428,14 +452,11 @@ onBeforeUnmount(() => {
                   class="size-1.5 shrink-0 rounded-full"
                   :class="selectedPeer.online ? 'bg-success' : 'bg-muted-foreground/40'"
                 />
-                <span class="shrink-0 text-[10px] text-muted-foreground">
+                <span class="shrink-0 text-xs text-muted-foreground">
                   {{ selectedPeer.online ? '在线' : '离线' }}
                 </span>
               </div>
-              <p
-                v-if="selectedPeer.ip"
-                class="truncate font-mono text-[10px] text-muted-foreground"
-              >
+              <p v-if="selectedPeer.ip" class="truncate font-mono text-xs text-muted-foreground">
                 {{ selectedPeer.ip }}:{{ selectedPeer.port }}
               </p>
             </div>
@@ -477,16 +498,19 @@ onBeforeUnmount(() => {
               >
                 <SIcon icon="lucide:monitor-smartphone" class="text-xs" />
               </div>
-              <div class="group relative max-w-[min(86%,34rem)] min-w-0">
+              <div
+                class="group relative flex min-w-0 max-w-64 flex-col sm:max-w-lg"
+                :class="message.direction === 'send' ? 'items-end' : 'items-start'"
+              >
                 <div
-                  class="mb-1 flex items-center gap-2 text-[10px] text-muted-foreground"
+                  class="mb-1 flex items-center gap-2 text-xs text-muted-foreground"
                   :class="message.direction === 'send' ? 'justify-end' : ''"
                 >
                   <span>{{ message.direction === 'send' ? '我' : selectedPeer?.name }}</span>
                   <span>{{ formatMessageTime(message.createdAt) }}</span>
                 </div>
                 <div
-                  class="rounded-2xl px-3.5 py-2.5 text-sm shadow-sm"
+                  class="w-fit max-w-full rounded-xl px-3 py-2 text-sm"
                   :class="
                     message.direction === 'send'
                       ? 'rounded-br-md bg-primary text-primary-foreground'
@@ -553,7 +577,7 @@ onBeforeUnmount(() => {
         <div class="">
           <div
             v-if="sendError"
-            class="mb-2 flex items-start gap-1.5 rounded-lg bg-destructive/8 px-3 py-2 text-[11px] text-destructive"
+            class="mb-2 flex items-start gap-1.5 rounded-lg bg-destructive/8 px-3 py-2 text-xs text-destructive"
             role="alert"
           >
             <SIcon icon="lucide:circle-alert" class="mt-0.5 shrink-0 text-xs" />
@@ -579,7 +603,7 @@ onBeforeUnmount(() => {
             <template #footer>
               <div class="flex items-center justify-between gap-3 px-4 py-2.5">
                 <span
-                  class="text-[10px]"
+                  class="text-xs"
                   :class="
                     draftTextBytes > maxTextBytes ? 'text-destructive' : 'text-muted-foreground'
                   "
@@ -590,7 +614,7 @@ onBeforeUnmount(() => {
                   <button
                     v-if="draftText"
                     type="button"
-                    class="text-[11px] text-muted-foreground hover:text-foreground"
+                    class="text-xs text-muted-foreground hover:text-foreground"
                     @click="draftText = ''"
                   >
                     清空

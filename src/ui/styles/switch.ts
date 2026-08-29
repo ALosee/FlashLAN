@@ -6,11 +6,11 @@ export const switchVariants = scv({
   slots: {
     root: 'inline-flex',
     control: [
-      `peer shrink-0 inline-flex items-center rounded-full border-0 shadow-sm transition-colors-200`,
+      `peer shrink-0 inline-flex items-center rounded-full border-0 shadow-sm transition-colors-150`,
       `outline-none focus-visible:ring-3  focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=unchecked]:bg-input`
     ],
     thumb: [
-      `flex justify-center items-center rounded-full shadow-lg transition-transform-200 bg-background pointer-events-none`,
+      `flex justify-center items-center rounded-full shadow-lg transition-transform-150 bg-background pointer-events-none`,
       `data-[state=unchecked]:translate-x-0.5 rtl:data-[state=unchecked]:-translate-x-0.5`
     ]
   },

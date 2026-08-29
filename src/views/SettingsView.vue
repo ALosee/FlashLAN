@@ -11,6 +11,7 @@ import { SInput } from '@/ui/components/input'
 import { SSwitch } from '@/ui/components/switch'
 import { SIcon } from '@/ui/components/icon'
 import { SSeparator } from '@/ui/components/separator'
+import { PageHeader, SettingsRow } from '@/ui/patterns'
 import { useDeviceStore } from '@/stores/device'
 import { useTransferStore } from '@/stores/transfer'
 import { isMobilePlatform, isTauri } from '@/utils/tauri'
@@ -19,6 +20,7 @@ const deviceStore = useDeviceStore()
 const transferStore = useTransferStore()
 const savePath = ref('')
 const deviceName = ref('')
+const savedDeviceName = ref('')
 const isLoading = ref(true)
 const isSavingName = ref(false)
 const isChoosingPath = ref(false)
@@ -27,6 +29,10 @@ const settingsError = ref('')
 const isMobile = isMobilePlatform()
 const theme = useTheme()
 const themeMode = computed<ThemeModePreference>(() => theme?.mode.value ?? 'light')
+const canSaveDeviceName = computed(() => {
+  const name = deviceName.value.trim()
+  return Boolean(name) && name !== savedDeviceName.value
+})
 
 const themeModeOptions: Array<{
   value: ThemeModePreference
@@ -99,12 +105,14 @@ async function loadSettings() {
       ? await invoke<SettingsPayload>('get_settings')
       : loadBrowserSettings()
     deviceName.value = settings.device_name || deviceStore.localDevice?.name || ''
+    savedDeviceName.value = deviceName.value.trim()
     savePath.value = settings.save_path || 'Download/FlashLAN'
   } catch (error) {
     settingsError.value = String(error).replace(/^Error:\s*/, '') || '设置加载失败'
     if (deviceStore.localDevice) {
       deviceName.value = deviceStore.localDevice.name
     }
+    savedDeviceName.value = deviceName.value.trim()
     savePath.value = 'Download/FlashLAN'
   } finally {
     isLoading.value = false
@@ -131,6 +139,7 @@ async function saveDeviceName() {
       )
     }
     deviceName.value = name
+    savedDeviceName.value = name
     if (deviceStore.localDevice) {
       deviceStore.localDevice.name = name
     }
@@ -170,174 +179,137 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="p-4 md:p-6 max-w-3xl mx-auto w-full space-y-4 md:space-y-6">
-    <div>
-      <h1 class="text-xl font-bold tracking-tight">设置</h1>
-      <p class="text-sm text-muted-foreground mt-1">管理本机与传输偏好</p>
-    </div>
+  <div class="fl-page fl-content-settings space-y-4 md:space-y-6">
+    <PageHeader title="设置" description="管理本机与传输偏好" />
 
-    <SCard :class="isLoading ? 'opacity-70' : ''">
-      <div class="divide-y">
-        <div
-          class="py-3 md:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 first:pt-0 last:pb-0"
+    <SCard
+      class="overflow-hidden transition-opacity duration-150"
+      :class="isLoading ? 'opacity-70' : ''"
+      :ui="{ content: 'p-0!' }"
+      :aria-busy="isLoading"
+    >
+      <div class="divide-y divide-border">
+        <SettingsRow
+          icon="lucide:monitor"
+          title="设备名称"
+          description="局域网内显示的名称"
+          stacked
         >
-          <div class="flex items-center gap-3">
-            <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
-              <SIcon icon="lucide:monitor" />
-            </div>
-            <div>
-              <div class="text-sm font-medium">设备名称</div>
-              <div class="text-xs text-muted-foreground">局域网内显示的名称</div>
-            </div>
-          </div>
-          <div class="flex w-full items-center gap-2 sm:w-auto">
-            <SInput
-              v-model="deviceName"
-              class="w-full sm:w-56"
-              placeholder="输入设备名称"
-              :disabled="isLoading || isSavingName"
-              @keyup.enter="saveDeviceName"
-            />
-            <SButton
-              size="sm"
-              class="shrink-0"
-              :disabled="isLoading || isSavingName"
-              @click="saveDeviceName"
-            >
-              {{ isSavingName ? '保存中...' : '保存' }}
-            </SButton>
-          </div>
-        </div>
-
-        <div class="py-3 md:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div class="flex items-center gap-3">
-            <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
-              <SIcon icon="lucide:folder" />
-            </div>
-            <div>
-              <div class="text-sm font-medium">保存路径</div>
-              <div v-if="isMobile" class="text-xs text-muted-foreground">
-                文件将保存到 Download/FlashLAN
-              </div>
-              <div
-                v-else
-                class="text-xs text-muted-foreground truncate max-w-[360px]"
-                :title="savePath"
+          <template #control>
+            <div class="flex w-full items-center gap-2 sm:w-auto">
+              <SInput
+                v-model="deviceName"
+                class="h-11 w-full sm:h-8 sm:w-56"
+                placeholder="输入设备名称"
+                :disabled="isLoading || isSavingName"
+                @keyup.enter="saveDeviceName"
+              />
+              <SButton
+                size="sm"
+                class="min-h-11 shrink-0 sm:min-h-8"
+                :variant="canSaveDeviceName ? 'solid' : 'outline'"
+                :disabled="isLoading || isSavingName || !canSaveDeviceName"
+                @click="saveDeviceName"
               >
-                {{ displayedSavePath || '加载中...' }}
-              </div>
+                {{ isSavingName ? '保存中...' : '保存' }}
+              </SButton>
             </div>
-          </div>
-          <SButton
-            v-if="!isMobile"
-            variant="outline"
-            size="sm"
-            class="shrink-0"
-            :disabled="isLoading || isChoosingPath"
-            @click="chooseSavePath"
-          >
-            <SIcon icon="lucide:folder-open" />
-            {{ isChoosingPath ? '选择中...' : '选择' }}
-          </SButton>
-        </div>
+          </template>
+        </SettingsRow>
 
-        <div class="py-3 md:py-4 flex items-center justify-between gap-3">
-          <div class="flex min-w-0 items-center gap-3">
-            <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
-              <SIcon icon="lucide:shield-check" />
-            </div>
-            <div class="min-w-0">
-              <div class="text-sm font-medium">可信设备自动接收</div>
-              <div class="text-xs text-muted-foreground truncate">
-                开启后仅可信设备发送的文件自动接收，其他设备仍会弹窗询问
-              </div>
-            </div>
-          </div>
-          <SSwitch v-model="autoReceive" class="shrink-0" />
-        </div>
-
-        <div class="py-3 md:py-4 flex flex-col gap-3">
-          <div class="flex items-center gap-3">
-            <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
-              <SIcon icon="lucide:palette" />
-            </div>
-            <div>
-              <div class="text-sm font-medium">主题模式</div>
-              <div class="text-xs text-muted-foreground">选择应用的外观显示方式</div>
-            </div>
-          </div>
-          <div
-            class="grid grid-cols-3 gap-1.5 pl-0 sm:gap-2 sm:pl-12"
-            role="radiogroup"
-            aria-label="主题模式"
-          >
-            <button
-              v-for="option in themeModeOptions"
-              :key="option.value"
-              type="button"
-              role="radio"
-              :aria-checked="themeMode === option.value"
-              class="flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border px-1.5 py-2 text-center transition-colors sm:min-h-0 sm:flex-row sm:justify-start sm:gap-3 sm:px-3 sm:py-2.5 sm:text-left"
-              :class="
-                themeMode === option.value
-                  ? 'border-primary bg-primary/10 text-primary shadow-sm'
-                  : 'border-border bg-muted/20 hover:bg-muted'
-              "
-              @click="selectThemeMode(option.value)"
+        <SettingsRow icon="lucide:folder" title="保存路径">
+          <template #description>
+            <span v-if="isMobile">文件将保存到 Download/FlashLAN</span>
+            <span v-else class="block max-w-sm truncate font-mono" :title="savePath">
+              {{ displayedSavePath || '加载中...' }}
+            </span>
+          </template>
+          <template v-if="!isMobile" #control>
+            <SButton
+              variant="outline"
+              size="sm"
+              class="min-h-11 shrink-0 sm:min-h-8"
+              :disabled="isLoading || isChoosingPath"
+              @click="chooseSavePath"
             >
-              <SIcon :icon="option.icon" class="text-base shrink-0" />
-              <span class="min-w-0">
-                <span class="block text-xs font-medium sm:text-sm">{{ option.label }}</span>
-                <span class="hidden text-xs text-muted-foreground truncate sm:block">
-                  {{ option.description }}
-                </span>
-              </span>
-            </button>
-          </div>
-        </div>
+              <SIcon icon="lucide:folder-open" />
+              {{ isChoosingPath ? '选择中...' : '选择路径' }}
+            </SButton>
+          </template>
+        </SettingsRow>
 
-        <div class="py-3 md:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div class="flex items-center gap-3">
-            <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
-              <SIcon icon="lucide:plug" />
-            </div>
-            <div>
-              <div class="text-sm font-medium">端口</div>
-              <div class="text-xs text-muted-foreground">发现 mDNS / 传输 17321</div>
-            </div>
-          </div>
-          <span class="text-xs font-mono bg-muted px-2.5 py-1 rounded-md">17321</span>
-        </div>
+        <SettingsRow
+          icon="lucide:shield-check"
+          title="可信设备自动接收"
+          description="开启后仅可信设备发送的文件自动接收，其他设备仍会弹窗询问"
+        >
+          <template #control>
+            <SSwitch v-model="autoReceive" class="ml-auto shrink-0" aria-label="可信设备自动接收" />
+          </template>
+        </SettingsRow>
 
-        <div class="py-3 md:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div class="flex items-center gap-3">
-            <div class="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
-              <SIcon icon="lucide:info" />
+        <SettingsRow
+          icon="lucide:palette"
+          title="主题模式"
+          description="选择应用的外观显示方式"
+          stacked
+        >
+          <template #control>
+            <div
+              class="flex w-full items-center rounded-lg border border-border bg-muted/40 p-1 sm:w-auto"
+              role="radiogroup"
+              aria-label="主题模式"
+            >
+              <SButton
+                v-for="option in themeModeOptions"
+                :key="option.value"
+                role="radio"
+                :aria-checked="themeMode === option.value"
+                size="sm"
+                :variant="themeMode === option.value ? 'soft' : 'ghost'"
+                :color="themeMode === option.value ? 'primary' : 'secondary'"
+                class="min-h-11 flex-1 px-2 sm:min-h-8 sm:flex-none"
+                :title="option.description"
+                @click="selectThemeMode(option.value)"
+              >
+                <SIcon :icon="option.icon" class="shrink-0" />
+                <span class="truncate">{{ option.label }}</span>
+              </SButton>
             </div>
-            <div>
-              <div class="text-sm font-medium">本机信息</div>
-              <div class="text-xs text-muted-foreground font-mono">
-                {{ deviceStore.localDevice?.id || '-' }}
-              </div>
-            </div>
-          </div>
-          <div class="flex flex-col items-start sm:items-end gap-1.5">
-            <span class="text-xs bg-muted px-2 py-1 rounded">
+          </template>
+        </SettingsRow>
+
+        <SettingsRow icon="lucide:plug" title="端口" description="发现 mDNS / 传输 17321">
+          <template #control>
+            <span class="rounded-md bg-muted px-2 py-1 font-mono text-xs">17321</span>
+          </template>
+        </SettingsRow>
+
+        <SettingsRow icon="lucide:info" title="本机信息">
+          <template #description>
+            <span class="font-mono">
+              {{ deviceStore.localDevice?.id || '-' }}
+            </span>
+          </template>
+          <template #control>
+            <span class="rounded-md bg-muted px-2 py-1 text-xs">
               {{ deviceStore.localDevice?.platform || '-' }}
             </span>
-          </div>
-        </div>
+          </template>
+        </SettingsRow>
       </div>
     </SCard>
 
-    <div
-      v-if="settingsMessage || settingsError"
-      class="flex items-center gap-2 text-xs"
-      :class="settingsError ? 'text-destructive' : 'text-success'"
-    >
-      <SIcon :icon="settingsError ? 'lucide:circle-alert' : 'lucide:check-circle-2'" />
-      {{ settingsError || settingsMessage }}
-    </div>
+    <Transition name="fl-state">
+      <div
+        v-if="settingsMessage || settingsError"
+        class="flex items-center gap-2 text-xs"
+        :class="settingsError ? 'text-destructive' : 'text-success'"
+      >
+        <SIcon :icon="settingsError ? 'lucide:circle-alert' : 'lucide:check-circle-2'" />
+        {{ settingsError || settingsMessage }}
+      </div>
+    </Transition>
 
     <SSeparator />
 

@@ -2,7 +2,15 @@
 
 局域网快传应用。基于 Tauri 2、Vue 3 和 Rust，在同一局域网内发现设备，并通过加密连接传输文件和文字消息。
 
-> 当前版本：`0.2.1` · Beta
+> 当前版本：`0.3.0` · Beta
+
+## v0.3.0 更新
+
+- 建立项目级 Design Contract，统一页面结构、响应式密度、主题令牌和视觉验收流程
+- 重构传文件、附近设备、消息、传输记录和设置页面，改善移动端操作区与列表信息层级
+- 新增页面、列表、抽屉和反馈状态动效，并为设备发现等异步流程加入骨架屏过渡
+- 优化消息气泡宽度，短消息按正文自适应，长文本与链接保持安全换行
+- 新增 iOS 14+ 工程、局域网与相机权限声明，并提供可选的 TestFlight 自动发布流程
 
 ## v0.2.1 更新
 
@@ -28,7 +36,7 @@
 - 查看、删除和清空传输记录
 - 自定义设备名称、接收保存目录和主题模式
 - Android 接收文件时优先保存到公共 `Download/FlashLAN` 目录
-- 支持桌面端和 Android；浏览器模式可用于预览界面
+- 支持 macOS、Windows、Android 和 iOS；浏览器模式可用于预览界面
 
 ## 界面预览
 
@@ -57,6 +65,10 @@
 | 文件 / 消息传输 | TCP                |
 | 包管理          | pnpm               |
 
+## 设计约束
+
+所有用户界面修改都需要遵循项目级 [Design Contract](DESIGN.md)。各页面的信息结构和可复用 Pattern 见 [页面与 Pattern 合同](docs/design/page-contracts.md)，完成修改前使用 [视觉验收清单](docs/design/visual-checklist.md) 检查桌面端、移动端、亮色和暗色状态。
+
 ## 环境要求
 
 - Node.js
@@ -64,6 +76,8 @@
 - Rust toolchain（包含 Cargo）
 - Tauri 2 的桌面端构建依赖
 - 构建 Android 时还需要 Android Studio、Android SDK/NDK 和 JDK
+- 开发 iOS 时还需要 macOS、完整 Xcode、CocoaPods 和 Apple iOS Rust targets
+- 发布 iOS 时需要 Apple Developer Program 账号、App Store Connect API Key 和已注册的 `com.flashlan.app` Bundle ID
 
 首次使用可以先确认 Tauri 环境：
 
@@ -92,23 +106,60 @@ pnpm tauri dev
 
 启动后，在“附近设备”页面扫描设备，或在首页手动添加目标设备的 IP 地址和端口。默认端口为 `17321`。
 
+### iOS 开发
+
+首次开发 iOS 版本时初始化 Xcode 工程：
+
+```bash
+pnpm ios:init
+pnpm dev:ios
+```
+
+真机首次访问局域网和相机时，iOS 会分别请求权限。局域网权限用于 mDNS 发现与 TCP 文件/消息传输，相机权限仅用于扫描 FlashLAN 连接二维码。
+
 ## 常用命令
 
-| 命令                 | 说明                            |
-| -------------------- | ------------------------------- |
-| `pnpm dev`           | 启动 Vite 浏览器预览            |
-| `pnpm tauri dev`     | 启动 Tauri 桌面开发环境         |
-| `pnpm build`         | 类型检查并构建前端              |
-| `pnpm tauri build`   | 构建当前平台的 Tauri 安装包     |
-| `pnpm build:macos`   | 构建 macOS DMG                  |
-| `pnpm build:windows` | 构建 Windows NSIS 和 MSI 安装包 |
-| `pnpm build:android` | 构建 Android APK                |
-| `pnpm preview`       | 预览已构建的前端产物            |
-| `pnpm check`         | 执行类型检查、Lint 和格式检查   |
-| `pnpm typecheck`     | 仅执行 TypeScript/Vue 类型检查  |
-| `pnpm lint:check`    | 仅执行 Lint 检查                |
-| `pnpm fmt:check`     | 仅执行格式检查                  |
-| `pnpm fmt`           | 格式化项目文件                  |
+| 命令                       | 说明                                  |
+| -------------------------- | ------------------------------------- |
+| `pnpm dev`                 | 启动 Vite 浏览器预览                  |
+| `pnpm tauri dev`           | 启动 Tauri 桌面开发环境               |
+| `pnpm build`               | 类型检查并构建前端                    |
+| `pnpm tauri build`         | 构建当前平台的 Tauri 安装包           |
+| `pnpm build:macos`         | 构建 macOS DMG                        |
+| `pnpm build:windows`       | 构建 Windows NSIS 和 MSI 安装包       |
+| `pnpm build:android`       | 构建 Android APK                      |
+| `pnpm ios:init`            | 初始化或更新 iOS Xcode 工程           |
+| `pnpm dev:ios`             | 在 iOS 模拟器或真机启动开发版本       |
+| `pnpm build:ios`           | 构建本地 iOS IPA                      |
+| `pnpm build:ios:app-store` | 构建用于 App Store Connect 的签名 IPA |
+| `pnpm preview`             | 预览已构建的前端产物                  |
+| `pnpm check`               | 执行类型检查、Lint 和格式检查         |
+| `pnpm typecheck`           | 仅执行 TypeScript/Vue 类型检查        |
+| `pnpm lint:check`          | 仅执行 Lint 检查                      |
+| `pnpm fmt:check`           | 仅执行格式检查                        |
+| `pnpm fmt`                 | 格式化项目文件                        |
+
+## 发布流程
+
+推送 `v*` 标签会运行 [Release workflow](.github/workflows/release.yml)，构建 macOS、Windows 和 Android 安装包，并创建 GitHub Release 草稿。
+
+iOS 发布默认关闭，避免没有 Apple 凭据时阻塞其他平台。启用后，同一工作流会构建 App Store Connect IPA 并上传到 TestFlight。需要在 GitHub Actions 中配置：
+
+| 类型     | 名称                     | 内容                                     |
+| -------- | ------------------------ | ---------------------------------------- |
+| Variable | `IOS_RELEASE_ENABLED`    | 设置为 `true`                            |
+| Secret   | `APPLE_DEVELOPMENT_TEAM` | Apple Developer Team ID                  |
+| Secret   | `APPLE_API_ISSUER`       | App Store Connect API Issuer ID          |
+| Secret   | `APPLE_API_KEY`          | App Store Connect API Key ID             |
+| Secret   | `APPLE_API_KEY_BASE64`   | `AuthKey_<KEY_ID>.p8` 文件的 Base64 内容 |
+
+本地 App Store 构建使用：
+
+```bash
+pnpm build:ios:app-store
+```
+
+Tauri 会读取 `APPLE_DEVELOPMENT_TEAM`、`APPLE_API_ISSUER`、`APPLE_API_KEY` 和 `APPLE_API_KEY_PATH` 完成自动签名。Apple 审核通过前，TestFlight 上传不代表已经公开上架 App Store。
 
 ## 传输实现
 
@@ -138,6 +189,7 @@ pnpm tauri dev
 - macOS、Windows、Linux：默认保存到系统下载目录下的 `FlashLAN` 文件夹，可在“设置”中修改
 - Android 10 及以上：优先写入公共 `Download/FlashLAN`，完成后生成可由系统文件管理器打开的 URI
 - Android 较旧版本或 MediaStore 不可用时：回退到应用数据目录
+- iOS：保存到应用沙盒内的 `FlashLAN` 目录，可通过系统文件选择器发送文件
 
 设置和传输历史保存在应用本地；清空历史只会删除记录，不会删除已经传输的文件。当前最多保留 100 条已完成或失败的记录。
 
@@ -160,7 +212,9 @@ FlashLAN/
 │   ├── src/discovery.rs   # mDNS 注册与设备发现
 │   ├── src/transfer.rs    # TCP 文件服务、发送和接收
 │   ├── capabilities/      # Tauri 权限配置
+│   ├── gen/apple/          # Tauri 生成的 iOS Xcode 工程
 │   ├── icons/              # 应用图标
+│   ├── Info.ios.plist      # iOS 局域网、Bonjour 和相机权限说明
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── public/                # 静态资源
@@ -214,4 +268,5 @@ pnpm exec sbean view button
 
 - [ ] 文件夹递归传输
 - [ ] 拖拽和剪贴板内容的完整接入
-- [ ] 系统托盘与桌面通知
+- [x] 系统托盘与桌面通知
+- [ ] App Store 元数据、截图与审核自动化

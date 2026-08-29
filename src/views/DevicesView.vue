@@ -4,11 +4,18 @@ import { invoke } from '@tauri-apps/api/core'
 import { onBackButtonPress } from '@tauri-apps/api/app'
 import { SDropdownMenu } from '@soybeanjs/ui'
 import type { MenuOptionData, MenuUi } from '@soybeanjs/headless'
-import { SCard } from '@/ui/components/card'
 import { SButton, SButtonIcon } from '@/ui/components/button'
 import { SDialog } from '@/ui/components/dialog'
 import { SIcon } from '@/ui/components/icon'
 import { SInput } from '@/ui/components/input'
+import {
+  DeviceListSkeleton,
+  DeviceRow,
+  EmptyState,
+  PageHeader,
+  SectionHeader,
+  StatusIndicator,
+} from '@/ui/patterns'
 import { isMobilePlatform, isTauri } from '@/utils/tauri'
 import { type Device, useDeviceStore } from '@/stores/device'
 
@@ -41,14 +48,14 @@ const onlineCount = computed(
   () => deviceStore.devices.filter(device => device.online !== false).length,
 )
 
-type MoreAction = 'scan' | 'add'
+type MoreAction = 'connect' | 'add'
 
 const moreActions = computed<MenuOptionData<MoreAction>[]>(() => [
   {
-    label: '扫码连接',
-    value: 'scan',
-    icon: 'lucide:scan-line',
-    disabled: isScanning.value,
+    label: isMobile ? '扫码连接' : '显示二维码',
+    value: 'connect',
+    icon: isMobile ? 'lucide:scan-line' : 'lucide:qr-code',
+    disabled: isMobile && isScanning.value,
   },
   {
     label: '添加设备',
@@ -58,9 +65,41 @@ const moreActions = computed<MenuOptionData<MoreAction>[]>(() => [
 ])
 
 const moreMenuUi: Partial<MenuUi> = {
-  popup: 'w-32 max-w-[calc(100vw-1.5rem)] rounded-xl border border-border bg-card p-1 shadow-lg',
-  item: 'min-h-10 rounded-lg',
+  popup: 'w-40 max-w-[calc(100vw-1.5rem)] rounded-lg border border-border bg-card p-1 shadow-lg',
+  item: 'min-h-11 rounded-lg sm:min-h-8',
   itemIcon: 'size-3.5 shrink-0 text-primary',
+}
+
+type DeviceAction = 'alias' | 'trust' | 'remove'
+
+function deviceActions(device: Device): MenuOptionData<DeviceAction>[] {
+  const actions: MenuOptionData<DeviceAction>[] = [
+    {
+      label: '设置别名',
+      value: 'alias',
+      icon: 'lucide:pencil',
+    },
+  ]
+
+  if (isTauri()) {
+    actions.push({
+      label: device.trusted ? '移除可信' : '设为可信',
+      value: 'trust',
+      icon: device.trusted ? 'lucide:shield-minus' : 'lucide:shield-plus',
+      disabled: Boolean(updatingTrustedDeviceKey.value),
+    })
+  }
+
+  if (device.isManual) {
+    actions.push({
+      label: '删除设备',
+      value: 'remove',
+      icon: 'lucide:trash-2',
+      disabled: Boolean(removingDeviceId.value),
+    })
+  }
+
+  return actions
 }
 
 const ipv4Pattern = /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/
@@ -284,10 +323,21 @@ async function scanConnect() {
 
 function selectMoreAction(item: MenuOptionData<MoreAction>) {
   showMoreActions.value = false
-  if (item.value === 'scan') {
-    void scanConnect()
+  if (item.value === 'connect') {
+    if (isMobile) void scanConnect()
+    else openQrDialog()
   } else {
     openAddDevice()
+  }
+}
+
+function selectDeviceAction(item: MenuOptionData<DeviceAction>, device: Device) {
+  if (item.value === 'alias') {
+    openAliasDialog(device)
+  } else if (item.value === 'trust') {
+    void toggleTrustedDevice(device)
+  } else {
+    void removeManualDevice(device)
   }
 }
 
@@ -417,55 +467,18 @@ function deviceDisplayName(device: Device) {
   return device.alias || device.name
 }
 
-interface DeviceVisual {
-  icon: string
-  accent: string
-  avatar: string
-}
-
-const deviceVisuals: Record<string, DeviceVisual> = {
-  macos: {
-    icon: 'lucide:laptop',
-    accent: 'bg-indigo-300/75',
-    avatar: 'bg-indigo-50/90 text-indigo-500 dark:bg-indigo-400/10 dark:text-indigo-300',
-  },
-  windows: {
-    icon: 'lucide:monitor',
-    accent: 'bg-sky-300/75',
-    avatar: 'bg-sky-50/90 text-sky-500 dark:bg-sky-400/10 dark:text-sky-300',
-  },
-  android: {
-    icon: 'lucide:smartphone',
-    accent: 'bg-emerald-300/75',
-    avatar: 'bg-emerald-50/90 text-emerald-500 dark:bg-emerald-400/10 dark:text-emerald-300',
-  },
-  ios: {
-    icon: 'lucide:smartphone',
-    accent: 'bg-rose-300/75',
-    avatar: 'bg-rose-50/90 text-rose-500 dark:bg-rose-400/10 dark:text-rose-300',
-  },
-  manual: {
-    icon: 'lucide:router',
-    accent: 'bg-rose-300/75',
-    avatar: 'bg-rose-50/90 text-rose-500 dark:bg-rose-400/10 dark:text-rose-300',
-  },
-  default: {
-    icon: 'lucide:smartphone',
-    accent: 'bg-violet-300/75',
-    avatar: 'bg-violet-50/90 text-violet-500 dark:bg-violet-400/10 dark:text-violet-300',
-  },
-}
-
-function deviceVisual(platform: string): DeviceVisual {
-  return deviceVisuals[platform] ?? deviceVisuals.default!
+function deviceIcon(platform: string) {
+  if (platform === 'macos') return 'lucide:laptop'
+  if (platform === 'windows') return 'lucide:monitor'
+  if (platform === 'android' || platform === 'ios') return 'lucide:smartphone'
+  if (platform === 'manual') return 'lucide:router'
+  return 'lucide:smartphone'
 }
 
 interface DeviceGroup {
   key: 'manual' | 'discovered'
   label: string
   icon: string
-  iconSurface: string
-  count: string
   devices: Device[]
 }
 
@@ -477,16 +490,12 @@ const deviceGroups = computed<DeviceGroup[]>(() => {
       key: 'discovered',
       label: '自动发现',
       icon: 'lucide:scan-search',
-      iconSurface: 'bg-sky-50/90 text-sky-500 dark:bg-sky-400/10 dark:text-sky-300',
-      count: 'bg-sky-50/90 text-sky-600 dark:bg-sky-400/10 dark:text-sky-300',
       devices: discoveredDevices.value,
     },
     {
       key: 'manual',
       label: '手动添加',
       icon: 'lucide:plus-circle',
-      iconSurface: 'bg-rose-50/90 text-rose-500 dark:bg-rose-400/10 dark:text-rose-300',
-      count: 'bg-rose-50/90 text-rose-600 dark:bg-rose-400/10 dark:text-rose-300',
       devices: manualDevices.value,
     },
   ]
@@ -513,67 +522,65 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 md:p-8">
-    <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-      <div class="min-w-0 flex-1">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <h1 class="text-2xl font-bold tracking-tight">附近设备</h1>
-            <p class="mt-1 text-sm text-muted-foreground">发现、连接并管理同一局域网中的设备</p>
-          </div>
-          <div v-if="isMobile" class="flex shrink-0 items-center gap-2">
-            <SDropdownMenu
-              v-model:open="showMoreActions"
-              :items="moreActions"
-              placement="bottom-end"
-              :show-arrow="false"
-              :ui="moreMenuUi"
-              @select="selectMoreAction"
-            >
-              <template #trigger>
-                <SButtonIcon
-                  color="primary"
-                  variant="soft"
-                  icon="lucide:ellipsis"
-                  aria-label="更多操作"
-                  title="更多操作"
-                  class="size-10 rounded-xl"
-                />
-              </template>
-            </SDropdownMenu>
-            <SButtonIcon
-              color="primary"
-              variant="solid"
-              icon="lucide:refresh-cw"
-              :icon-class="deviceStore.isDiscovering ? 'animate-spin' : ''"
-              aria-label="刷新附近设备"
-              title="刷新附近设备"
-              :disabled="deviceStore.isDiscovering"
-              class="size-10 rounded-xl"
-              @click="deviceStore.discover()"
-            />
-          </div>
-        </div>
-        <div class="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-          <span
-            class="size-1.5 rounded-full"
-            :class="deviceStore.isDiscovering ? 'animate-pulse bg-primary' : 'bg-success'"
-          />
-          <span>{{ deviceStore.isDiscovering ? '正在搜索附近设备' : '设备发现已开启' }}</span>
-          <span class="text-border">·</span>
-          <span>{{ onlineCount }} 台在线</span>
-          <span
-            v-if="scanStatus && scanStatusIsError"
-            class="min-w-0 max-w-52 truncate"
-            :class="scanStatusIsError ? 'text-destructive' : 'text-success'"
-            aria-live="polite"
-            :title="scanStatus"
+  <div class="fl-page fl-content-list flex flex-col gap-6">
+    <PageHeader
+      title="附近设备"
+      description="发现、连接并管理同一局域网中的设备"
+      mobile-actions-inline
+    >
+      <template #after-title>
+        <div class="ml-auto flex shrink-0 items-center gap-2 md:hidden">
+          <SDropdownMenu
+            v-model:open="showMoreActions"
+            :items="moreActions"
+            placement="bottom-end"
+            :show-arrow="false"
+            :ui="moreMenuUi"
+            @select="selectMoreAction"
           >
-            · {{ scanStatus }}
-          </span>
+            <template #trigger>
+              <SButtonIcon
+                color="primary"
+                variant="soft"
+                icon="lucide:ellipsis"
+                aria-label="更多设备操作"
+                title="更多设备操作"
+                class="size-11 rounded-lg"
+              />
+            </template>
+          </SDropdownMenu>
+          <SButtonIcon
+            color="primary"
+            variant="solid"
+            icon="lucide:refresh-cw"
+            :icon-class="deviceStore.isDiscovering ? 'animate-spin' : ''"
+            aria-label="刷新附近设备"
+            title="刷新附近设备"
+            :disabled="deviceStore.isDiscovering"
+            class="size-11 rounded-lg"
+            @click="deviceStore.discover()"
+          />
         </div>
-      </div>
-      <div v-if="!isMobile" class="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
+      </template>
+
+      <template #status>
+        <StatusIndicator
+          :label="deviceStore.isDiscovering ? '正在搜索附近设备' : '设备发现已开启'"
+          :tone="deviceStore.isDiscovering ? 'primary' : 'success'"
+          :pulse="deviceStore.isDiscovering"
+          live="polite"
+        />
+        <span class="text-xs text-muted-foreground">·</span>
+        <span class="text-xs text-muted-foreground">{{ onlineCount }} 台在线</span>
+        <StatusIndicator
+          v-if="scanStatus && scanStatusIsError"
+          :label="scanStatus"
+          tone="destructive"
+          live="polite"
+        />
+      </template>
+
+      <template #actions>
         <SButton variant="outline" @click="openQrDialog">
           <SIcon icon="lucide:qr-code" />
           二维码
@@ -582,248 +589,134 @@ onBeforeUnmount(() => {
           <SIcon icon="lucide:plus" />
           添加设备
         </SButton>
-        <SButton
-          class="shadow-sm"
-          :disabled="deviceStore.isDiscovering"
-          @click="deviceStore.discover()"
-        >
+        <SButton :disabled="deviceStore.isDiscovering" @click="deviceStore.discover()">
           <SIcon
             icon="lucide:refresh-cw"
             :class="deviceStore.isDiscovering ? 'animate-spin' : ''"
           />
           {{ deviceStore.isDiscovering ? '扫描中' : '刷新' }}
         </SButton>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
-    <div
-      v-if="deviceStore.error"
-      class="flex items-start gap-2 rounded-xl border border-destructive/15 bg-destructive/8 px-4 py-3 text-sm text-destructive"
-    >
-      <SIcon icon="lucide:circle-alert" class="mt-0.5 shrink-0" />
-      {{ deviceStore.error }}
-    </div>
-
-    <div
-      v-if="deviceStore.devices.length === 0 && !deviceStore.isDiscovering"
-      class="rounded-2xl border border-dashed border-border bg-card/60 p-10 text-center"
-    >
+    <Transition name="fl-state">
       <div
-        class="mx-auto flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"
+        v-if="deviceStore.error"
+        class="flex items-start gap-2 rounded-xl border border-destructive/15 bg-destructive/8 px-4 py-3 text-sm text-destructive"
       >
-        <SIcon icon="lucide:scan-search" class="text-2xl" />
+        <SIcon icon="lucide:circle-alert" class="mt-1 shrink-0" />
+        {{ deviceStore.error }}
       </div>
-      <div class="mt-4 text-sm font-semibold">未发现设备</div>
-      <div class="mt-1 text-xs text-muted-foreground">
-        请确保另一台设备已启动 FlashLAN 并在同一 WiFi
-      </div>
-    </div>
+    </Transition>
 
-    <div v-else-if="deviceStore.devices.length" class="space-y-5">
-      <section
-        v-for="group in deviceGroups"
-        :key="group.key"
-        class="space-y-3"
-        :aria-labelledby="`${group.key}-devices-title`"
-      >
-        <div class="flex items-center gap-2 px-1">
-          <div
-            class="flex size-8 shrink-0 items-center justify-center rounded-xl"
-            :class="group.iconSurface"
-          >
-            <SIcon :icon="group.icon" class="text-sm" />
-          </div>
-          <h2 :id="`${group.key}-devices-title`" class="text-sm font-semibold">
-            {{ group.label }}
-          </h2>
-          <span class="rounded-full px-2 py-0.5 text-[10px] font-medium" :class="group.count">
-            {{ group.devices.length }} 台
-          </span>
-        </div>
+    <Transition name="fl-state" mode="out-in">
+      <DeviceListSkeleton
+        v-if="deviceStore.isDiscovering"
+        key="loading"
+        :rows="Math.max(deviceStore.devices.length, 3)"
+      />
 
-        <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
-          <SCard
-            v-for="d in group.devices"
-            :key="d.id"
-            class="relative overflow-hidden rounded-3xl border-0 bg-muted/50 p-0!"
+      <EmptyState
+        v-else-if="deviceStore.devices.length === 0"
+        key="empty"
+        icon="lucide:scan-search"
+        title="未发现设备"
+        description="请确保另一台设备已启动 FlashLAN，并连接到同一 WiFi"
+      />
+
+      <div v-else key="devices" class="space-y-6">
+        <section
+          v-for="group in deviceGroups"
+          :key="group.key"
+          class="space-y-3"
+          :aria-labelledby="`${group.key}-devices-title`"
+        >
+          <SectionHeader
+            :id="`${group.key}-devices-title`"
+            :icon="group.icon"
+            :title="group.label"
+            :count="`${group.devices.length} 台`"
+          />
+
+          <TransitionGroup
+            name="fl-list"
+            tag="div"
+            class="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card"
           >
-            <div class="relative p-3 sm:p-4">
-              <div class="relative flex items-start gap-3.5">
-                <div class="flex w-14 shrink-0 flex-col items-center gap-1">
-                  <div
-                    class="relative flex size-14 items-center justify-center rounded-[1.5rem]"
-                    :class="deviceVisual(d.platform).avatar"
-                  >
-                    <SIcon :icon="deviceVisual(d.platform).icon" class="relative text-2xl" />
-                  </div>
-                  <div
-                    class="flex max-w-full items-center gap-1 text-center text-[10px] leading-4 text-muted-foreground"
-                  >
-                    <span
-                      class="size-1.5 shrink-0 rounded-full"
-                      :class="deviceVisual(d.platform).accent"
-                    />
-                    <span class="truncate">{{ platformLabel(d.platform) }}</span>
-                  </div>
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="flex min-w-0 items-center gap-1" :class="d.isManual ? 'pr-10' : ''">
-                    <div class="truncate text-[15px] font-semibold leading-5">
-                      {{ deviceDisplayName(d) }}
-                    </div>
-                    <SButtonIcon
-                      icon="lucide:pencil"
-                      color="primary"
-                      variant="ghost"
-                      class="size-6 shrink-0 rounded-full"
-                      aria-label="编辑设备别名"
-                      title="编辑设备别名"
-                      @click="openAliasDialog(d)"
-                    />
-                  </div>
-                  <div class="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-                    {{ d.ip }}:{{ d.port }}
-                  </div>
-                  <div class="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px]">
-                    <span
-                      v-if="d.trusted"
-                      class="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success"
-                    >
-                      <SIcon icon="lucide:shield-check" class="text-[11px]" />
-                      可信
-                    </span>
-                    <span
-                      class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-medium"
-                      :class="
-                        d.online === false
-                          ? 'bg-muted text-muted-foreground'
-                          : 'bg-success/10 text-success'
-                      "
-                    >
-                      <span
-                        class="size-1.5 rounded-full"
-                        :class="d.online === false ? 'bg-muted-foreground' : 'bg-success'"
-                      />
-                      {{ d.online === false ? '离线' : '在线' }}
-                    </span>
-                  </div>
-                </div>
+            <DeviceRow
+              v-for="d in group.devices"
+              :key="d.id"
+              :icon="d.isManual ? 'lucide:router' : deviceIcon(d.platform)"
+              :name="deviceDisplayName(d)"
+              :address="`${d.ip}:${d.port}`"
+              :platform="d.isManual ? '' : platformLabel(d.platform)"
+              :source="group.label"
+              :online="d.online !== false"
+              :trusted="d.trusted"
+            >
+              <template #actions>
                 <SButton
-                  v-if="d.isManual"
-                  variant="ghost"
-                  color="destructive"
+                  v-if="d.online === false"
+                  variant="link"
                   size="sm"
-                  shape="square"
-                  class="absolute right-0 top-0 size-8 shrink-0 rounded-full"
-                  :disabled="removingDeviceId === d.id"
-                  aria-label="删除设备"
-                  title="删除设备（仅移除本机记录）"
-                  @click="removeManualDevice(d)"
-                >
-                  <SIcon
-                    :icon="removingDeviceId === d.id ? 'lucide:loader-circle' : 'lucide:trash-2'"
-                    :class="removingDeviceId === d.id ? 'animate-spin' : ''"
-                  />
-                </SButton>
-              </div>
-              <div class="mt-4 flex items-end justify-between gap-3 border-t border-border pt-3">
-                <div class="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <SIcon icon="lucide:network" class="shrink-0 text-xs opacity-70" />
-                  <span>局域网设备</span>
-                  <span v-if="d.online === false" class="text-border">·</span>
-                  <button
-                    v-if="d.online === false"
-                    type="button"
-                    class="inline-flex min-w-0 items-center gap-1 truncate text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-60"
-                    :disabled="retryingDeviceKey === `${d.ip}:${d.port}`"
-                    :aria-busy="retryingDeviceKey === `${d.ip}:${d.port}`"
-                    @click="retryDevice(d)"
-                  >
-                    <SIcon
-                      :icon="
-                        retryingDeviceKey === `${d.ip}:${d.port}`
-                          ? 'lucide:loader-circle'
-                          : 'lucide:refresh-cw'
-                      "
-                      :class="retryingDeviceKey === `${d.ip}:${d.port}` ? 'animate-spin' : ''"
-                    />
-                    {{ retryingDeviceKey === `${d.ip}:${d.port}` ? '重试中…' : '点击重试' }}
-                  </button>
-                </div>
-                <SButton
-                  v-if="isTauri()"
-                  variant="soft"
-                  :color="d.trusted ? 'destructive' : 'primary'"
-                  size="sm"
-                  class="h-8 shrink-0 rounded-full px-3 text-[11px]"
-                  :disabled="updatingTrustedDeviceKey === `${d.ip}:${d.port}`"
-                  :aria-label="d.trusted ? '移除可信设备' : '设为可信设备'"
-                  :title="d.trusted ? '移除可信设备（不会删除设备记录）' : '设为可信设备'"
-                  @click="toggleTrustedDevice(d)"
+                  class="min-h-11 min-w-11 px-0 sm:min-h-8 sm:min-w-0"
+                  :disabled="retryingDeviceKey === `${d.ip}:${d.port}`"
+                  :aria-busy="retryingDeviceKey === `${d.ip}:${d.port}`"
+                  :aria-label="
+                    retryingDeviceKey === `${d.ip}:${d.port}` ? '正在重试连接' : '重试连接'
+                  "
+                  title="重试连接"
+                  @click="retryDevice(d)"
                 >
                   <SIcon
                     :icon="
-                      updatingTrustedDeviceKey === `${d.ip}:${d.port}`
+                      retryingDeviceKey === `${d.ip}:${d.port}`
                         ? 'lucide:loader-circle'
-                        : d.trusted
-                          ? 'lucide:shield-check'
-                          : 'lucide:shield-plus'
+                        : 'lucide:refresh-cw'
                     "
-                    :class="updatingTrustedDeviceKey === `${d.ip}:${d.port}` ? 'animate-spin' : ''"
+                    :class="retryingDeviceKey === `${d.ip}:${d.port}` ? 'animate-spin' : ''"
                   />
-                  {{
-                    updatingTrustedDeviceKey === `${d.ip}:${d.port}`
-                      ? '处理中'
-                      : d.trusted
-                        ? '移除可信'
-                        : '设为可信'
-                  }}
+                  <span class="hidden sm:inline">
+                    {{ retryingDeviceKey === `${d.ip}:${d.port}` ? '重试中…' : '重试' }}
+                  </span>
                 </SButton>
-              </div>
-            </div>
-          </SCard>
-        </div>
-      </section>
-    </div>
+                <SDropdownMenu
+                  :items="deviceActions(d)"
+                  placement="bottom-end"
+                  :show-arrow="false"
+                  :ui="moreMenuUi"
+                  @select="item => selectDeviceAction(item, d)"
+                >
+                  <template #trigger>
+                    <SButtonIcon
+                      icon="lucide:ellipsis"
+                      variant="ghost"
+                      class="size-11 sm:size-8"
+                      :aria-label="`管理设备：${deviceDisplayName(d)}`"
+                      title="更多设备操作"
+                    />
+                  </template>
+                </SDropdownMenu>
+              </template>
+            </DeviceRow>
+          </TransitionGroup>
+        </section>
+      </div>
+    </Transition>
 
     <section v-if="deviceStore.localDevice" class="space-y-3" aria-labelledby="local-devices-title">
-      <div class="flex items-center gap-2 px-1">
-        <div
-          class="flex size-8 shrink-0 items-center justify-center rounded-xl bg-violet-50/90 text-violet-500 dark:bg-violet-400/10 dark:text-violet-300"
-        >
-          <SIcon icon="lucide:monitor" class="text-sm" />
-        </div>
-        <h2 id="local-devices-title" class="text-sm font-semibold">本机</h2>
-        <span
-          class="rounded-full bg-violet-50/90 px-2 py-0.5 text-[10px] font-medium text-violet-600 dark:bg-violet-400/10 dark:text-violet-300"
-        >
-          1 台
-        </span>
-        <span class="ml-auto shrink-0 text-[11px] text-muted-foreground">当前设备</span>
-      </div>
+      <SectionHeader id="local-devices-title" icon="lucide:monitor" title="本机" count="1 台" />
 
-      <SCard class="overflow-hidden rounded-3xl border-0 bg-muted/50 p-0!">
-        <div class="flex items-center gap-3 p-3 sm:p-4">
-          <div
-            class="flex size-12 shrink-0 items-center justify-center rounded-[1.5rem] bg-violet-50/90 text-violet-500 dark:bg-violet-400/10 dark:text-violet-300"
-          >
-            <SIcon icon="lucide:laptop" class="text-xl" />
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="truncate text-sm font-semibold">{{ deviceStore.localDevice.name }}</div>
-            <div class="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-              {{ deviceStore.localDevice.ip }}:{{ deviceStore.localDevice.port }} ·
-              {{ platformLabel(deviceStore.localDevice.platform) }}
-            </div>
-          </div>
-          <span
-            class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-success/10 px-2 py-1 text-[10px] font-medium text-success"
-          >
-            <span class="size-1.5 rounded-full bg-success" />
-            在线
-          </span>
-        </div>
-      </SCard>
+      <div class="overflow-hidden rounded-lg border border-border bg-card">
+        <DeviceRow
+          :icon="deviceIcon(deviceStore.localDevice.platform)"
+          :name="deviceStore.localDevice.name"
+          :address="`${deviceStore.localDevice.ip}:${deviceStore.localDevice.port}`"
+          :platform="platformLabel(deviceStore.localDevice.platform)"
+          :online="true"
+          current
+        />
+      </div>
     </section>
 
     <SDialog
